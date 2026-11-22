@@ -382,6 +382,8 @@ body.split #bigpiano { grid-area: piano; display: flex; }
   background: linear-gradient(transparent 0 20px, #ff9f0a 20px 24px, transparent 24px), rgba(28, 28, 30, 0.55); cursor: ns-resize; }
 #foldline[hidden] { display: none; }
 #foldline span { background: #1c1c1e; padding: 4px 10px; border-radius: 8px; }
+#foldinfo { position: absolute; top: 48px; left: 8px; right: 8px; font: 500 11px/1.35 ui-monospace, Menlo, monospace; color: #fff;
+  background: rgba(28, 28, 30, 0.85); padding: 4px 8px; border-radius: 8px; pointer-events: none; text-align: left; }
 #foldline button { background: #ff9f0a; color: #1c1c1e; border-radius: 8px; padding: 6px 14px; font-weight: 700; }
 
 /* "Even" switch (Chords tab): the chord grid with Chord Pad spacing */

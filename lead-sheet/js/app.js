@@ -367,16 +367,31 @@ function alignFold() {
   fl.onpointermove = (e) => {
     if (!start) return;
     S.settings.foldAdjust = Math.round(start.adj + e.clientY - start.y);
-    applySplit();
+    applySplit(); foldInfo();
   };
   fl.onpointerup = (e) => {                     // where the finger lifts is what counts
     if (!start) return;
     S.settings.foldAdjust = Math.round(start.adj + e.clientY - start.y);
-    start = null; applySplit(); persistSoon(); render();
+    start = null; applySplit(); persistSoon(); render(); foldInfo();
   };
   fl.onpointercancel = () => { if (start) { start = null; persistSoon(); render(); } };
   fl.querySelector('button').onclick = () => { fl.hidden = true; persistSoon(); render(); };
+  foldInfo();
 }
+// what this page can see of the screen, shown under the fold line (to tune the automatic estimate)
+let lastTouch = '—';
+function foldInfo(ev) {
+  const t = ev && ev.touches && ev.touches[0];
+  if (t) lastTouch = `${Math.round(t.screenY - t.clientY)}/${Math.round(t.screenX - t.clientX)}`;
+  const el = $('#foldinfo'); if (!el || $('#foldline').hidden) return;
+  let framed = '?'; try { framed = window.self !== window.top ? 'framed' : 'top'; } catch (e) { framed = 'framed×'; }
+  let segs = 'none'; try { const sg = window.viewport && window.viewport.segments; if (sg) segs = sg.map((r) => `${Math.round(r.top)}+${Math.round(r.height)}`).join(','); } catch (e) {}
+  const vv = window.visualViewport, h = window.innerHeight;
+  el.textContent = `page ${innerWidth}×${h} · screen ${screen.width}×${screen.height} (avail ${screen.availHeight}) · dpr ${devicePixelRatio} · ${framed}` +
+    ` · vv ${vv ? Math.round(vv.offsetTop) + '+' + Math.round(vv.height) : '—'} · segs ${segs} · posture ${(navigator.devicePosture && navigator.devicePosture.type) || '—'}` +
+    ` · est ${hingeEstimate(h) ?? '—'} · adj ${S.settings.foldAdjust || 0} · line ${getComputedStyle(document.documentElement).getPropertyValue('--seg0').trim()} · touch Δ ${lastTouch}`;
+}
+document.addEventListener('touchstart', foldInfo, { passive: true, capture: true });
 function applySplit() {
   const mode = S.settings.split || 'auto', sg = foldSegments();
   let on = mode === 'on' || (mode === 'auto' && !!sg);
