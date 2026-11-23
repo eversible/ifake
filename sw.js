@@ -19,6 +19,8 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
+  // iFake Pro (pro/) has its own offline copy; the old addresses just redirect
+  if (/^(pro|lead-sheet|chord-pad)\//.test(url.pathname.slice(new URL(self.registration.scope).pathname.length))) return;
   if (url.pathname.includes('/samples/') && !url.pathname.endsWith('index.json')) {
     e.respondWith(cacheFirst(SAMPLES, req));            // instrument samples never change
   } else if (url.searchParams.has('v')) {

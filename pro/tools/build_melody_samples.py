@@ -1,6 +1,6 @@
 import json, os, re, subprocess, sys, tempfile, shutil, base64
 SW = "/home/claude/samplework"
-OUT = "/home/claude/lead-sheet/samples"
+OUT = "/home/claude/ifake/pro/samples"
 MEL = list(range(48, 97, 3))          # C3..C7
 INST = [("altosax", "Alto sax", 65, 3.0, 0.3), ("tenorsax", "Tenor sax", 66, 3.0, 0.3), ("trumpet", "Trumpet", 56, 3.0, 0.3),
         ("flute", "Flute", 73, 3.0, 0.3), ("clarinet", "Clarinet", 71, 3.0, 0.3), ("violin", "Violin", 40, 3.0, 0.4)]

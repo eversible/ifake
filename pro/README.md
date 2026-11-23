@@ -4,7 +4,7 @@ A small MuseScore-style lead-sheet editor for iPhone, iPad and Mac. It has two l
 (notes, rests, dots, tuplets and ties) and the **chords** (Chord Pad's chord engine), with repeats and endings. You can
 play back any bar range on a loop, with a melody instrument, comping and a bass line.
 
-Chord Pad (`../chord-pad`) remains a separate app. This app reuses Chord Pad's engine files unchanged.
+iFake, the chord app (the repo's root folder), remains a separate app. This app reuses its engine files unchanged.
 
 ## Files
 - `index.html`, `css/app.css`: the page (the CSS is Chord Pad's, plus the score and editor styles)
@@ -59,7 +59,7 @@ back to the front. See `songs/README.md` for how updates, local edits and deleti
 Run `python3 tools/stamp.py` first. It adds `?v=<content hash>` to every script and stylesheet URL in
 `index.html`, plus an import map for the modules, so phones always load the changed files instead of a cached copy.
 It also refreshes `BUILD` and the offline file list in `sw.js`. The same app is hosted on GitHub Pages from the
-`ifake` repo (eversible.github.io/ifake) (see the README there).
+`ifake` repo, at eversible.github.io/ifake/pro/ (see the README there).
 
 ## Run locally
 Run any static server, for example `python3 -m http.server` in this folder, then open http://localhost:8000.
