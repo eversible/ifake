@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lead Sheet">
+<meta name="theme-color" content="#1c1c1e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<title>Lead Sheet</title>
+<link rel="stylesheet" href="css/app.css?v=f4b2d0fbaa">
+<script src="lib/vexflow.js?v=139e0c4686"></script>
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <button class="tb" id="btn-charts" aria-label="Songs">☰</button>
+    <div id="title" role="button" tabindex="0">Untitled</div>
+    <button class="tb" id="btn-even" aria-label="Even spacing: the chord grid" hidden>▦ Even</button>
+    <button class="tb" id="btn-settings" aria-label="Settings">⚙︎</button>
+  </header>
+
+  <main id="score-wrap">
+    <div id="score" aria-label="Score"></div>
+    <div id="chordgrid" aria-hidden="true"></div>
+    <div id="overlay" aria-hidden="true"></div>
+    <div id="score-tools">
+      <span id="sync-status"></span>
+    </div>
+  </main>
+
+  <section id="info" role="button" aria-label="Hear the selection">
+    <span class="info-hear" aria-hidden="true">♪</span>
+    <div id="info-text">
+      <div id="info-main">—</div>
+      <div id="info-sub"></div>
+    </div>
+  </section>
+
+  <div id="typebar" hidden>
+    <input id="type-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
+    <button id="type-go">Enter</button>
+    <button id="type-close" aria-label="Close typing">✕</button>
+    <div id="type-msg"></div>
+  </div>
+
+  <div id="transport">
+    <button id="loop-chip" aria-label="Loop on or off"><span class="lc-icon">⟲</span><span class="lc-text"><span class="lc-main">Loop</span><span class="lc-sub"></span></span></button>
+    <div id="tempo">
+      <button id="tempo-down" aria-label="Slower (hold to repeat)">−</button>
+      <button id="bpm" aria-label="Tempo; tap in time to set it"><span id="bpm-val">120</span><small>TAP</small></button>
+      <button id="tempo-up" aria-label="Faster (hold to repeat)">+</button>
+    </div>
+    <button id="btn-play" aria-label="Play">▶</button>
+  </div>
+
+  <nav id="tabs" role="tablist">
+    <button data-layer="melody" role="tab">Melody</button>
+    <button data-layer="chords" role="tab">Chords</button>
+    <button data-layer="bars" role="tab">Bars</button>
+  </nav>
+  <div id="panel" aria-label="Editing keys"></div>
+  <section id="bigpiano" aria-label="Piano" hidden></section>
+</div>
+
+<div id="foldline" hidden><span>Drag this line onto the fold</span><button>Done</button><small id="foldinfo"></small></div>
+<div id="toast" role="status"></div>
+
+<div class="sheet" id="sheet-settings" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head"><h2>Settings</h2><button class="close" data-close>Done</button></div>
+    <div class="sheet-body" id="settings-body"></div>
+  </div>
+</div>
+<div class="sheet" id="sheet-charts" hidden>
+  <div class="sheet-card">
+    <div class="sheet-head"><h2>Songs</h2><button class="close" data-close>Done</button></div>
+    <div class="sheet-body" id="charts-body"></div>
+  </div>
+</div>
+
+<script type="importmap">{"imports": {"./js/app.js": "./js/app.js?v=9fafa13353", "./js/audio.js": "./js/audio.js?v=edc1685ab2", "./js/chords.js": "./js/chords.js?v=5fb7131653", "./js/demo.js": "./js/demo.js?v=ed6d17c3be", "./js/form.js": "./js/form.js?v=8150dd6c2c", "./js/grid.js": "./js/grid.js?v=38069ed8eb", "./js/melody.js": "./js/melody.js?v=8d3264e96a", "./js/recognise.js": "./js/recognise.js?v=da561b397d", "./js/score.js": "./js/score.js?v=4076caa61f", "./js/song.js": "./js/song.js?v=9e79cbab3b", "./js/store.js": "./js/store.js?v=4769d0f668", "./js/voicing.js": "./js/voicing.js?v=e6563af0b1"}}</script>
+<script type="module" src="js/app.js?v=9fafa13353"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>body{margin:0;background:#fff} #s{width:390px} .chord-sym{font-family:"Avenir Next Condensed","Arial Narrow",sans-serif;font-weight:600;fill:#1d1b16}
+.cs-r{font-size:17px}.cs-a{font-size:11px}.cs-q{font-size:13px}.cs-x{font-size:10px}.cs-b{font-size:12px;fill:#6b6457}</style>
+<script src="../lib/vexflow.js"></script></head><body><div id="s"></div>
+<script type="module">
+import { songFromText } from '../js/song.js';
+import { DEMO_SONG_TEXT } from '../js/demo.js';
+import { renderScore } from '../js/score.js';
+const song = songFromText(DEMO_SONG_TEXT);
+const t0 = performance.now();
+try { window.__layout = renderScore(document.getElementById('s'), song, { width: 390, barsPerLine: 2, barNumber: (m) => m }); window.__ms = performance.now() - t0; }
+catch (e) { window.__err = e.stack; }
+</script></body></html>

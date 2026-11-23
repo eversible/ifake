@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1c1c1e">
+<title>Music apps</title>
+<link rel="icon" type="image/png" href="lead-sheet/icons/icon-192.png">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; background: #1c1c1e; color: #f2f2f7; font: 17px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom)); box-sizing: border-box; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; color: #aeaeb2; }
+  a.app { display: flex; align-items: center; gap: 16px; width: min(420px, 100%); box-sizing: border-box; padding: 16px 18px;
+    background: #2c2c2e; border-radius: 16px; color: inherit; text-decoration: none; }
+  a.app:active { background: #3a3a3c; }
+  a.app img { width: 56px; height: 56px; border-radius: 13px; }
+  a.app b { display: block; font-size: 19px; }
+  a.app span { color: #aeaeb2; font-size: 15px; }
+  p.tip { width: min(420px, 100%); color: #8e8e93; font-size: 14px; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+  <h1>Music apps</h1>
+  <a class="app" href="lead-sheet/"><img src="lead-sheet/icons/icon-180.png" alt=""><div><b>Lead Sheet</b><span>Melody and chords, Duo split view</span></div></a>
+  <a class="app" href="chord-pad/"><img src="chord-pad/icons/icon-180.png" alt=""><div><b>Chord Pad</b><span>Chord charts with backing</span></div></a>
+  <p class="tip">Open an app, then Share → Add to Home Screen to run it full screen and offline.</p>
+</body>
+</html>
