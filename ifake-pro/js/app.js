@@ -428,7 +428,7 @@ function hingeEstimate(h) {
   try { if (window.self !== window.top) return Math.round((h - CLAUDE_APP_BAR) / 2); } catch (e) { return Math.round((h - CLAUDE_APP_BAR) / 2); }
   return null;
 }
-// one-off alignment: a line across the screen to drag onto the hinge
+// move the split: a line across the screen to drag (Reset puts it back on the fold, or the screen's middle)
 function alignFold() {
   if (!document.body.classList.contains('split')) { S.settings.split = 'on'; persistSoon(); applySplit(); render(); }
   const fl = $('#foldline');
@@ -442,31 +442,17 @@ function alignFold() {
   fl.onpointermove = (e) => {
     if (!start) return;
     S.settings.foldAdjust = Math.round(start.adj + e.clientY - start.y);
-    applySplit(); foldInfo();
+    applySplit();
   };
   fl.onpointerup = (e) => {                     // where the finger lifts is what counts
     if (!start) return;
     S.settings.foldAdjust = Math.round(start.adj + e.clientY - start.y);
-    start = null; applySplit(); persistSoon(); render(); foldInfo();
+    start = null; applySplit(); persistSoon(); render();
   };
   fl.onpointercancel = () => { if (start) { start = null; persistSoon(); render(); } };
-  fl.querySelector('button').onclick = () => { fl.hidden = true; persistSoon(); render(); };
-  foldInfo();
+  fl.querySelector('[data-fl="done"]').onclick = () => { fl.hidden = true; persistSoon(); render(); };
+  fl.querySelector('[data-fl="reset"]').onclick = () => { S.settings.foldAdjust = 0; applySplit(); persistSoon(); render(); };
 }
-// what this page can see of the screen, shown under the fold line (to tune the automatic estimate)
-let lastTouch = '—';
-function foldInfo(ev) {
-  const t = ev && ev.touches && ev.touches[0];
-  if (t) lastTouch = `${Math.round(t.screenY - t.clientY)}/${Math.round(t.screenX - t.clientX)}`;
-  const el = $('#foldinfo'); if (!el || $('#foldline').hidden) return;
-  let framed = '?'; try { framed = window.self !== window.top ? 'framed' : 'top'; } catch (e) { framed = 'framed×'; }
-  let segs = 'none'; try { const sg = window.viewport && window.viewport.segments; if (sg) segs = sg.map((r) => `${Math.round(r.top)}+${Math.round(r.height)}`).join(','); } catch (e) {}
-  const vv = window.visualViewport, h = window.innerHeight;
-  el.textContent = `page ${innerWidth}×${h} · screen ${screen.width}×${screen.height} (avail ${screen.availHeight}) · dpr ${devicePixelRatio} · ${framed}` +
-    ` · vv ${vv ? Math.round(vv.offsetTop) + '+' + Math.round(vv.height) : '—'} · segs ${segs} · posture ${(navigator.devicePosture && navigator.devicePosture.type) || '—'}` +
-    ` · est ${hingeEstimate(h) ?? '—'} · adj ${S.settings.foldAdjust || 0} · line ${getComputedStyle(document.documentElement).getPropertyValue('--seg0').trim()} · touch Δ ${lastTouch}`;
-}
-document.addEventListener('touchstart', foldInfo, { passive: true, capture: true });
 // Without the fold APIs (Safari has them behind feature flags), recognise the iPhone Duo's inner screen
 // (669 × 951 points; inside the Claude app the page sees 669 × ~870): held upright, it folds across the middle.
 // A posture of "folded" also counts ("continuous" is what non-foldables report, so it can't rule the Duo out).
@@ -481,15 +467,17 @@ function applySplit() {
   const mode = S.settings.split || 'auto', sg = foldSegments();
   let on = mode === 'on' || (mode === 'auto' && (!!sg || foldableScreen()));
   const root = document.documentElement.style;
+  const adj = S.settings.foldAdjust || 0;
   if (on && sg && mode !== 'off') {
-    root.setProperty('--seg0', sg[0].height + 'px');
+    const a = Math.max(150 - sg[0].height, Math.min(sg[1].height - 150, adj));
+    root.setProperty('--seg0', sg[0].height + a + 'px');
     root.setProperty('--hinge', Math.max(0, sg[1].top - sg[0].top - sg[0].height) + 'px');
-    root.setProperty('--seg1', sg[1].height + 'px');
+    root.setProperty('--seg1', sg[1].height - a + 'px');
   } else if (on) {
-    // no fold reported (e.g. inside an app that doesn't pass it through): the screen's halfway line, moved by
-    // the user's own alignment (Settings → Align with the fold)
+    // no fold reported (e.g. inside an app that doesn't pass it through): the screen's halfway line; either way
+    // moved by the user's own adjustment (Settings → Split line)
     const h = window.innerHeight;
-    const top = Math.max(150, Math.min(h - 150, (hingeEstimate(h) ?? Math.round(h / 2)) + (S.settings.foldAdjust || 0)));
+    const top = Math.max(150, Math.min(h - 150, (hingeEstimate(h) ?? Math.round(h / 2)) + adj));
     root.setProperty('--seg0', top + 'px'); root.setProperty('--hinge', '0px'); root.setProperty('--seg1', h - top + 'px');
   }
   const was = document.body.classList.contains('split');
@@ -564,9 +552,12 @@ function updateBigPiano() {
   el.querySelector('[data-bp="edit"]').classList.toggle('on', !draft);
   el.querySelector('[data-bp="draft"]').classList.toggle('on', draft);
   el.classList.toggle('draft', draft);
-  const on = new Set(draft ? (S.settings.draftLatch ? latchSet().notes : heldNotes()) : bigPianoNotes());
+  // while playing (or paused) the keys show only what's playing; the selection shows again when it stops
+  const playback = !!playingAt;
+  const on = new Set(playback ? [] : draft ? (S.settings.draftLatch ? latchSet().notes : heldNotes()) : bigPianoNotes());
   const playSeg = playingAt ? segAt(playingAt.m, playingAt.beat) : null;
   const play = new Set(playSeg && playSeg.chord ? chordKeys(playSeg.chord, S.bigBase) : []);
+  el.classList.toggle('playing', !!playingAt);
   el.querySelectorAll('.pk').forEach((k) => { const m = +k.dataset.midi; k.classList.toggle('on', on.has(m)); k.classList.toggle('play', play.has(m)); k.classList.toggle('mel', melNow.has(m)); });
   const name = el.querySelector('.bp-name');
   const latchBtn = el.querySelector('[data-bp="latch"]');
@@ -591,6 +582,7 @@ function updateBigPiano() {
     write.disabled = !c || same;
     write.classList.toggle('ready', !!c && !same);
     for (const b of el.querySelectorAll('[data-bp="strike"], [data-bp="clear"]')) b.hidden = !latch;
+    if (playback) showPlaying(el, playSeg);
     return;
   }
   const chords = S.layer === 'chords', write = el.querySelector('[data-bp="write"]');
@@ -603,12 +595,21 @@ function updateBigPiano() {
     write.disabled = !c || same;
     write.classList.toggle('ready', !!c && !same);
   } else { name.className = 'bp-name none'; name.textContent = S.layer === 'melody' ? 'Tap a key to enter a note' : ''; }
+  if (playback) showPlaying(el, playSeg);
+}
+// playing or paused: the bar names the chord playing, ▶ plays it, and Write / Clear wait until it stops
+function showPlaying(el, seg) {
+  const name = el.querySelector('.bp-name'), c = seg && seg.chord;
+  name.className = 'bp-name playing' + (c ? '' : ' none');
+  name.textContent = c ? chordText(c) : paused ? 'Paused' : 'Playing';
+  el.querySelector('[data-bp="strike"]').hidden = !c;
+  for (const b of el.querySelectorAll('[data-bp="write"], [data-bp="clear"]')) { b.disabled = true; b.classList.remove('ready'); }
 }
 // play the latched keys together, cutting the previous strike
-function strikeChord(notes) {
+function strikeChord(notes, asChord = false) {
   const ctx = engine.ensureContext(), t = ctx.currentTime + 0.005;
   for (const h of S.strikes) if (h) h.release(t);
-  const mel = S.layer === 'melody';
+  const mel = S.layer === 'melody' && !asChord;
   S.strikes = notes.map((m) => engine.note(mel ? S.settings.melodyInst : S.settings.chordInst, m, t, 2.5, 0.72, mel ? 'melody' : 'chord'));
 }
 function hearKey(midi) {
@@ -663,6 +664,12 @@ function bigPianoBar(what) {
     toast(`${chordText(c)} → ${barLabel(S.cs.m)}, ${posLabel(csPos())}`);
     updateBigPiano(); return;
   }
+  if (what === 'strike' && playingAt) {              // playing or paused: hear the chord at the playhead
+    const seg = segAt(playingAt.m, playingAt.beat);
+    if (seg && seg.chord) strikeChord(chordKeys(seg.chord, S.bigBase), true);
+    return;
+  }
+  if (playingAt && (what === 'write' || what === 'clear')) return;
   if (what === 'up' || what === 'down') { S.bigBase = Math.max(24, Math.min(96 - 12 * bigOctaves(), S.bigBase + (what === 'up' ? 12 : -12))); buildBigPiano(); }
   if (what === 'follow') {
     const k = S.layer === 'chords' ? 'draftFollowChords' : 'draftFollowMelody', on = !followSel();
@@ -833,6 +840,11 @@ function renderInfo() {
       sub = `${barLabel(S.sel.m)}, beat ${beat + 1}${c && !c.nc ? ` · over ${chordText(c)}` : ''}`;
     } else { main = 'Tap a note or a piano key'; }
     sub += `${sub ? ' · ' : ''}next: ${S.dur.d === 2 ? 'double-dotted ' : S.dur.d ? 'dotted ' : ''}${DUR_NAMES[S.dur.b]}${S.tup ? `, ${S.tup}-tuplet` : ''}`;
+  } else if (S.layer === 'chords' && playingAt) {
+    const seg = segAt(playingAt.m, playingAt.beat), c = seg && seg.chord;
+    main = c ? chordText(c) : 'No chord';
+    sub = `${paused ? 'Paused' : 'Playing'} · ${barLabel(playingAt.m)}, beat ${playingAt.beat + 1}`;
+    if (c && !c.nc) sub += ` · ${chordNotes(c).map(noteName).join(' ')}`;
   } else if (S.layer === 'chords') {
     const own = csChord();
     const c = own || chordAt(S.cs.m, csPos());
@@ -1320,7 +1332,7 @@ let startToken = 0;
 let paused = null, lastCur = null;
 const selKey = () => JSON.stringify([S.song.id, S.layer, S.cursor, S.cs, S.bars]);
 function checkPause() {
-  if (paused && paused.selKey !== selKey()) { paused = null; playingAt = null; setMelNow(new Set()); }
+  if (paused && paused.selKey !== selKey()) { paused = null; playingAt = null; setMelNow(new Set()); queueMicrotask(renderInfo); }
 }
 function setMelNow(set) {
   if (set.size === melNow.size && [...set].every((m) => melNow.has(m))) return;
@@ -1385,13 +1397,13 @@ function playheadLoop() {
     const tl = timeline(), m = tl.cm.ofCell[cur.cell], beat = cur.cell - tl.cm.start[m];
     if (!playingAt || playingAt.m !== m || playingAt.beat !== beat) {
       playingAt = { m, beat };
-      renderOverlay();
+      renderOverlay(); if (S.layer === 'chords') renderInfo();
       const M = S.layout && S.layout.measures[m]; if (M) scrollIntoViewY(M.sysTop, M.sysH);
       renderTransport();
     }
   }
   if (seq.playing) requestAnimationFrame(playheadLoop);
-  else setTimeout(() => { if (!seq.playing && !paused) { playingAt = null; setMelNow(new Set()); renderOverlay(); renderTransport(); } }, 300);
+  else setTimeout(() => { if (!seq.playing && !paused) { playingAt = null; setMelNow(new Set()); renderOverlay(); renderTransport(); renderInfo(); } }, 300);
 }
 function activeMeta() { if (seq.playing && seq.range) return (seq.pending || seq.range).meta; return playRange().meta; }
 function renderTransport() {
@@ -1407,6 +1419,8 @@ function renderTransport() {
   if (!startToken) play.textContent = seq.playing ? '❚❚' : '▶';
   play.classList.toggle('on', seq.playing);
   play.setAttribute('aria-label', seq.playing ? 'Pause' : paused ? 'Carry on playing' : 'Play');
+  const mc = $('#mel-chip');
+  if (mc) { mc.hidden = !!S.song.chartOnly; mc.classList.toggle('on', !!s.playMelody); mc.querySelector('.mc-sub').textContent = s.playMelody ? 'on' : 'off'; }
   const sw = $('#swing-chip');
   if (sw) { sw.classList.toggle('on', !!s.swingOn); sw.querySelector('.sw-main').textContent = s.swingOn ? 'Swing' : 'Straight'; }
   $('#bpm-val').textContent = S.song.tempo || 120;
@@ -1420,9 +1434,14 @@ function bindTransport() {
   fastTap($('#btn-play'), () => togglePlay());
   $('#loop-chip').addEventListener('click', onLoopToggle);
   $('#swing-chip').addEventListener('click', () => { S.settings.swingOn = !S.settings.swingOn; persistSoon(); renderTransport(); });
+  $('#mel-chip').addEventListener('click', () => {
+    S.settings.playMelody = !S.settings.playMelody; persistSoon(); renderTransport();
+    toast(S.settings.playMelody ? 'Melody on' : 'Melody off: just the backing');
+  });
   fastTap($('#info'), () => {
     engine.unlock();
-    if (S.layer === 'chords') hearChordAt(S.cs.m, csPos(), true);
+    if (S.layer === 'chords' && playingAt) hearChordAt(playingAt.m, playingAt.beat, true);
+    else if (S.layer === 'chords') hearChordAt(S.cs.m, csPos(), true);
     else { const e = selEv(); if (e && !e.r) hearNote(midiOf(e.p), 1); }
     const el = $('#info'); el.classList.add('pressed'); setTimeout(() => el.classList.remove('pressed'), 150);
   });
@@ -1548,7 +1567,7 @@ function renderSettings() {
     <div class="group"><h3>Volume</h3>${range('st-vm', 'Melody', 0, 1, 0.01, s.volMelody)}${range('st-vc', 'Chords', 0, 1, 0.01, s.volChord)}${range('st-vb', 'Bass', 0, 1, 0.01, s.volBass)}${range('st-vk', 'Click', 0, 1, 0.01, s.volClick)}</div>
     <div class="group"><h3>Display &amp; editing</h3>
       <div class="row"><label for="st-split">Split (iPhone Duo half-folded)</label><select id="st-split">${optionList([{ id: 'auto', label: 'Auto' }, { id: 'on', label: 'On' }, { id: 'off', label: 'Off' }], s.split || 'auto')}</select></div>
-      <div class="row"><label>Line between the halves</label><button class="btn" id="st-fold">Align with the fold…</button></div>
+      <div class="row"><label>Split line<span class="row-sub">${s.foldAdjust ? `moved ${Math.abs(s.foldAdjust)} pt ${s.foldAdjust > 0 ? 'down' : 'up'}` : 'on the fold'}</span></label><button class="btn" id="st-fold">Move…</button></div>
       <div class="row"><label for="st-bpl">Bars per line (score)</label><select id="st-bpl">${optionList([{ id: 'auto', label: 'Auto' }, ...[1, 2, 3, 4, 5, 6].map((n) => ({ id: String(n), label: n }))], String(s.scoreBars || 'auto'))}</select></div>
       <div class="row"><label for="st-gbl">Bars per line (chord grid)</label><select id="st-gbl">${optionList([1, 2, 3, 4, 5, 6, 8].map((n) => ({ id: String(n), label: n })), String(s.gridBars || 4))}</select></div>
       ${check('st-aud', 'Play notes while editing', s.audition)}
@@ -1580,7 +1599,7 @@ function renderSettings() {
   on('st-compat', 'change', (e) => setS('compPattern', e.target.value));
   on('st-voicing', 'change', (e) => setS('voicing', e.target.value, true));
   on('st-bpat', 'change', (e) => { setS('bassPattern', e.target.value); preloadInstruments(); });
-  on('st-pm', 'change', (e) => setS('playMelody', e.target.checked));
+  on('st-pm', 'change', (e) => { setS('playMelody', e.target.checked); renderTransport(); });
   on('st-swon', 'change', (e) => { setS('swingOn', e.target.checked); renderTransport(); });
   on('st-pc', 'change', (e) => setS('playChords', e.target.checked));
   on('st-click', 'change', (e) => setS('click', e.target.checked));

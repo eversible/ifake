@@ -1,8 +1,8 @@
 // Offline cache for the GitHub Pages build (not used inside claude.ai).
 // tools/stamp.py fills in BUILD and CORE; run it before every push.
 const APP = 'leadsheet';
-const BUILD = '1cfd53e61e';
-const CORE = [ "./", "index.html", "css/app.css?v=60f20a58ea", "js/app.js?v=6bed38753c", "js/audio.js?v=e46c49cd69", "js/chords.js?v=5fb7131653", "js/demo.js?v=ed6d17c3be", "js/form.js?v=8150dd6c2c", "js/grid.js?v=38069ed8eb", "js/melody.js?v=8d3264e96a", "js/recognise.js?v=59657d3432", "js/score.js?v=4076caa61f", "js/song.js?v=9e79cbab3b", "js/store.js?v=4769d0f668", "js/voicing.js?v=e6563af0b1", "lib/vexflow.js?v=139e0c4686", "manifest.webmanifest", "samples/index.json", "icons/icon-180.png", "icons/icon-192.png" ];
+const BUILD = '7f8f8a432a';
+const CORE = [ "./", "index.html", "css/app.css?v=ff5fd3950d", "js/app.js?v=d170ec1367", "js/audio.js?v=e46c49cd69", "js/chords.js?v=5fb7131653", "js/demo.js?v=ed6d17c3be", "js/form.js?v=8150dd6c2c", "js/grid.js?v=38069ed8eb", "js/melody.js?v=8d3264e96a", "js/recognise.js?v=59657d3432", "js/score.js?v=4076caa61f", "js/song.js?v=9e79cbab3b", "js/store.js?v=4769d0f668", "js/voicing.js?v=e6563af0b1", "lib/vexflow.js?v=139e0c4686", "manifest.webmanifest", "samples/index.json", "icons/icon-180.png", "icons/icon-192.png" ];
 const CODE = APP + '-code-' + BUILD, SAMPLES = APP + '-samples';
 
 self.addEventListener('install', (e) => e.waitUntil(caches.open(CODE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting())));
