@@ -397,3 +397,29 @@ body.grid-view #chordgrid { display: block; }
 
 /* songs that came from the GitHub repo's songs/ folder */
 .gh-tag { font-size: 11px; font-weight: 600; color: #8e8e93; border: 1px solid #48484a; border-radius: 5px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; }
+
+/* swing / straight toggle in the transport strip */
+#swing-chip { height: 48px; min-width: 64px; padding: 0 8px; border-radius: 11px; background: #2c2c2e; border: 1px solid #48484a; color: #a1a1a6;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
+#swing-chip .sw-main { font: 600 14px var(--ui-font); }
+#swing-chip .sw-sub { font-size: 12px; letter-spacing: 0.1em; }
+#swing-chip.on { border-color: #ff9f0a; color: #f2f2f7; background: rgba(255, 159, 10, 0.14); }
+#swing-chip.on .sw-sub { color: #ff9f0a; }
+body.split #swing-chip { height: 42px; }
+@media (max-height: 560px) and (orientation: landscape) { #swing-chip { height: 42px; } }
+/* paused: the playhead stays, dimmed */
+.ov.play.paused { background: #ff9f0a; opacity: 0.75; }
+/* the melody on the piano keys while playing (chords stay green) */
+#bigpiano .pk.pk.mel.w, #piano-strip .pk.pk.mel.w { background: #ffb340; color: #fff; }
+#bigpiano .pk.pk.mel.b, #piano-strip .pk.pk.mel.b { background: #ff9f0a; }
+#bigpiano .pk.pk.mel.play { box-shadow: inset 0 -10px 0 #30b07f; }
+/* narrow phones: make room for the swing toggle */
+@media (max-width: 430px) {
+  #transport { gap: 5px; }
+  #loop-chip { padding: 0 8px; }
+  #loop-chip .lc-icon { display: none; }
+  #swing-chip { min-width: 50px; padding: 0 4px; }
+  #swing-chip .sw-main { font-size: 12px; }
+  #tempo-down, #tempo-up { min-width: 32px; }
+  #btn-play { width: 58px; }
+}

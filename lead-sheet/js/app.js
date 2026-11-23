@@ -25,7 +25,7 @@ const mod = (a, n) => ((a % n) + n) % n;
 
 const DEFAULT_SETTINGS = {
   loop: true, melodyInst: 'altosax', chordInst: 'piano', bassInst: 'upbass', compPattern: 'block', bassPattern: 'off',
-  voicing: 'smooth', swing: 0, click: false, countIn: 0, reverb: 0.15,
+  voicing: 'smooth', swing: 0, swingOn: true, swingAmt: 0.8, click: false, countIn: 0, reverb: 0.15,
   volMelody: 0.9, volChord: 0.65, volBass: 0.8, volClick: 0.5, audition: true, playMelody: true, playChords: true, scoreBars: 'auto', gridBars: 4, evenChords: false, split: 'auto', foldAdjust: 0, pianoMode: 'draft', draftLatch: true,
 };
 
@@ -267,7 +267,9 @@ function timeline() {
 const invalidate = () => { S.tl = null; };
 function playSettings() {
   const s = S.settings;
-  return { tempo: S.song.tempo || 120, swing: s.swing, click: s.click, countIn: s.countIn,
+  // swing: eighths played long-short (quarter-note beats only; triplets and other tuplets stay as written)
+  const swing = s.swingOn && S.song.time.den === 4 ? s.swingAmt : 0;
+  return { tempo: S.song.tempo || 120, swing, click: s.click, countIn: s.countIn,
     compPattern: s.playChords ? s.compPattern : 'none', bassPattern: s.playChords ? s.bassPattern : 'off',
     chordInst: s.chordInst, bassInst: s.bassInst };
 }
@@ -276,11 +278,15 @@ seq.onCell = (cell, beatStart, beatDur, swingAt) => {
   if (!S.settings.playMelody || S.song.chartOnly) return [];
   const list = timeline().byCell[cell];
   if (!list) return [];
+  const swingPos = (x) => { const k = Math.floor(x + 1e-9); return k + swingAt(x - k); };
   return list.map((n) => {
-    const when = beatStart + swingAt(n.off) * beatDur;
-    return engine.note(S.settings.melodyInst, n.midi, when, Math.max(0.08, n.beats * beatDur * 0.96), 0.85, 'melody');
+    const when = beatStart + swingAt(n.off) * beatDur, end = beatStart + swingPos(n.off + n.beats) * beatDur;
+    melHits.push({ midi: n.midi, t0: when, t1: when + Math.max(0.05, (end - when) * 0.96) });
+    return engine.note(S.settings.melodyInst, n.midi, when, Math.max(0.08, (end - when) * 0.96), 0.85, 'melody');
   });
 };
+let melHits = [];          // melody notes scheduled while playing: { midi, t0, t1 } in audio time
+let melNow = new Set();    // melody keys sounding now (kept while paused)
 
 // ---------------------------------------------------------------- audio helpers
 function applyAudioSettings() {
@@ -359,6 +365,7 @@ function render() {
 }
 function box(cls, x, y, w, h, extra = '') { return `<div class="ov ${cls}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;${extra}"></div>`; }
 function renderOverlay() {
+  checkPause();
   const L = S.layout; if (!L) return;
   const ov = $('#overlay');
   ov.style.height = L.height + 'px';
@@ -387,7 +394,7 @@ function renderOverlay() {
     // the chord symbol's baseline sits 34 (unscaled) px above the staff
     if (M) h += box('chordsel', M.beatX[S.cs.beat] - 5, M.top - 53 * sc, 64 * sc, 26 * sc);
   }
-  if (playingAt && !grid) { const M = L.measures[playingAt.m]; if (M && M.beatX[playingAt.beat] !== undefined) h += box('play', M.beatX[playingAt.beat] - 2, M.top - 10, 4, M.bottom - M.top + 20); }
+  if (playingAt && !grid) { const M = L.measures[playingAt.m]; if (M && M.beatX[playingAt.beat] !== undefined) h += box(paused ? 'play paused' : 'play', M.beatX[playingAt.beat] - 2, M.top - 10, 4, M.bottom - M.top + 20); }
   ov.innerHTML = h;
   updateChordGrid();
   updateBigPiano();
@@ -533,7 +540,7 @@ function updateBigPiano() {
   const on = new Set(draft ? (S.settings.draftLatch ? latchSet().notes : heldNotes()) : bigPianoNotes());
   const playSeg = playingAt ? segAt(playingAt.m, playingAt.beat) : null;
   const play = new Set(playSeg && playSeg.chord ? chordKeys(playSeg.chord, S.bigBase) : []);
-  el.querySelectorAll('.pk').forEach((k) => { const m = +k.dataset.midi; k.classList.toggle('on', on.has(m)); k.classList.toggle('play', play.has(m)); });
+  el.querySelectorAll('.pk').forEach((k) => { const m = +k.dataset.midi; k.classList.toggle('on', on.has(m)); k.classList.toggle('play', play.has(m)); k.classList.toggle('mel', melNow.has(m)); });
   const name = el.querySelector('.bp-name');
   const latchBtn = el.querySelector('[data-bp="latch"]');
   latchBtn.hidden = !draft; latchBtn.classList.toggle('on', !!S.settings.draftLatch);
@@ -940,7 +947,9 @@ function updatePanel() {
     b.classList.toggle('on', on); b.classList.toggle('dim', dim);
   });
   document.querySelectorAll('#piano-strip .pk').forEach((k) => k.classList.toggle('cur', !!(e && !e.r && midiOf(e.p) === +k.dataset.midi)));
+  updateStripMelody();
 }
+function updateStripMelody() { document.querySelectorAll('#piano-strip .pk').forEach((k) => k.classList.toggle('mel', melNow.has(+k.dataset.midi))); }
 
 function bindPanel() {
   const p = $('#panel');
@@ -1251,18 +1260,41 @@ function playRange() {
   return { order, from: Math.max(0, order.indexOf(cm.start[m])), meta: { whole: true } };
 }
 let startToken = 0;
+// Pause keeps the place (and the keys lit); ▶ carries on from there. Moving the selection while paused
+// drops the place, so ▶ starts from the selection as usual.
+let paused = null, lastCur = null;
+const selKey = () => JSON.stringify([S.song.id, S.layer, S.cursor, S.cs, S.bars]);
+function checkPause() {
+  if (paused && paused.selKey !== selKey()) { paused = null; playingAt = null; setMelNow(new Set()); }
+}
+function setMelNow(set) {
+  if (set.size === melNow.size && [...set].every((m) => melNow.has(m))) return;
+  melNow = set; updateBigPiano(); updateStripMelody();
+}
+function pausePlay() {
+  const idx = lastCur && lastCur.idx != null ? lastCur.idx : seq.beat;
+  paused = { range: seq.range, idx, selKey: selKey() };
+  seq.stop();
+  renderOverlay(); renderTransport(); updateBigPiano();
+}
+function stopPlay() { paused = null; seq.stop(); playingAt = null; setMelNow(new Set()); renderOverlay(); renderTransport(); updateBigPiano(); }
 async function togglePlay() {
   engine.unlock();
-  if (seq.playing || startToken) { startToken = 0; seq.stop(); playingAt = null; renderOverlay(); renderTransport(); return; }
+  if (startToken) { startToken = 0; renderTransport(); return; }
+  if (seq.playing) { pausePlay(); return; }
   if (!songHasSound()) { toast('Add some notes or chords first'); return; }
   const r = playRange();
+  const resume = !!(paused && paused.selKey === selKey() && paused.range.order.join() === r.order.join());
+  const from = resume ? paused.idx : r.from, meta = resume ? paused.range.meta : r.meta;
+  paused = null;
   const token = startToken = Date.now();
   $('#btn-play').textContent = '…';
   await instrumentsReady();
   if (startToken !== token) return;
   startToken = 0;
   S.auditionVoices.forEach((h) => h && h.release(engine.ctx.currentTime));
-  seq.start({ order: r.order, loop: S.settings.loop, meta: r.meta }, r.from);
+  melHits = []; lastCur = null;
+  seq.start({ order: r.order, loop: S.settings.loop, meta }, from, { countIn: !resume });
   renderTransport();
   requestAnimationFrame(playheadLoop);
 }
@@ -1288,6 +1320,12 @@ function onLoopToggle() {
 let playingAt = null;
 function playheadLoop() {
   const cur = seq.poll();
+  if (cur) lastCur = cur;
+  if (engine.ctx) {
+    const now = engine.ctx.currentTime - (engine.ctx.outputLatency || engine.ctx.baseLatency || 0);
+    if (melHits.length > 200) melHits = melHits.filter((h) => h.t1 > now - 1);
+    setMelNow(new Set(melHits.filter((h) => h.t0 <= now && now < h.t1).map((h) => h.midi)));
+  }
   if (cur) {
     const tl = timeline(), m = tl.cm.ofCell[cur.cell], beat = cur.cell - tl.cm.start[m];
     if (!playingAt || playingAt.m !== m || playingAt.beat !== beat) {
@@ -1298,7 +1336,7 @@ function playheadLoop() {
     }
   }
   if (seq.playing) requestAnimationFrame(playheadLoop);
-  else setTimeout(() => { if (!seq.playing) { playingAt = null; renderOverlay(); renderTransport(); } }, 300);
+  else setTimeout(() => { if (!seq.playing && !paused) { playingAt = null; setMelNow(new Set()); renderOverlay(); renderTransport(); } }, 300);
 }
 function activeMeta() { if (seq.playing && seq.range) return (seq.pending || seq.range).meta; return playRange().meta; }
 function renderTransport() {
@@ -1306,12 +1344,16 @@ function renderTransport() {
   const s = S.settings, m = activeMeta(), switching = seq.playing && seq.pending && s.loop;
   const span = m.whole ? 'Whole song' : m.lo === m.hi ? `Bar ${barNumber(S.song, m.lo)}` : `Bars ${barNumber(S.song, m.lo)}–${barNumber(S.song, m.hi)}`;
   const main = s.loop ? span : 'Loop off';
-  const sub = s.loop ? (switching ? 'from next bar' : m.whole ? 'drag bars to loop' : 'looping selection') : (m.whole ? 'plays to the end' : `plays ${span.toLowerCase()}`);
+  checkPause();
+  const sub = paused ? 'paused · ▶ carries on' : s.loop ? (switching ? 'from next bar' : m.whole ? 'drag bars to loop' : 'looping selection') : (m.whole ? 'plays to the end' : `plays ${span.toLowerCase()}`);
   chip.classList.toggle('on', s.loop);
   chip.querySelector('.lc-main').textContent = main; chip.querySelector('.lc-sub').textContent = sub;
   const play = $('#btn-play');
-  if (!startToken) play.textContent = seq.playing ? '■' : '▶';
+  if (!startToken) play.textContent = seq.playing ? '❚❚' : '▶';
   play.classList.toggle('on', seq.playing);
+  play.setAttribute('aria-label', seq.playing ? 'Pause' : paused ? 'Carry on playing' : 'Play');
+  const sw = $('#swing-chip');
+  if (sw) { sw.classList.toggle('on', !!s.swingOn); sw.querySelector('.sw-main').textContent = s.swingOn ? 'Swing' : 'Straight'; }
   $('#bpm-val').textContent = S.song.tempo || 120;
 }
 function setTempo(t) { S.song.tempo = Math.max(30, Math.min(320, Math.round(t) || 120)); renderTransport(); persistSoon(); }
@@ -1322,6 +1364,7 @@ function fastTap(el, fn) {
 function bindTransport() {
   fastTap($('#btn-play'), () => togglePlay());
   $('#loop-chip').addEventListener('click', onLoopToggle);
+  $('#swing-chip').addEventListener('click', () => { S.settings.swingOn = !S.settings.swingOn; persistSoon(); renderTransport(); });
   fastTap($('#info'), () => {
     engine.unlock();
     if (S.layer === 'chords') hearChordAt(S.cs.m, csPos(), true);
@@ -1443,7 +1486,7 @@ function renderSettings() {
       <div class="row"><label for="st-bpat">Bass line</label><select id="st-bpat">${optionList(BASS_PATTERNS, s.bassPattern)}</select></div>
       <div class="row"><label for="st-bass">Bass sound</label><select id="st-bass">${instrumentOptions(s.bassInst, 'bass')}</select></div>
       ${check('st-pm', 'Play the melody', s.playMelody)}${check('st-pc', 'Play the chords', s.playChords)}
-      ${range('st-swing', 'Swing', 0, 1, 0.05, s.swing)}${range('st-reverb', 'Reverb', 0, 0.6, 0.01, s.reverb)}
+      ${check('st-swon', 'Swing (eighths long-short)', s.swingOn)}${range('st-swing', 'Swing amount', 0.1, 1, 0.05, s.swingAmt)}${range('st-reverb', 'Reverb', 0, 0.6, 0.01, s.reverb)}
       ${check('st-click', 'Click', s.click)}
       <div class="row"><label for="st-count">Count-in</label><select id="st-count">${optionList([{ id: 0, label: 'None' }, { id: 1, label: '1 bar' }, { id: 2, label: '2 bars' }], s.countIn)}</select></div>
     </div>
@@ -1483,6 +1526,7 @@ function renderSettings() {
   on('st-voicing', 'change', (e) => setS('voicing', e.target.value, true));
   on('st-bpat', 'change', (e) => { setS('bassPattern', e.target.value); preloadInstruments(); });
   on('st-pm', 'change', (e) => setS('playMelody', e.target.checked));
+  on('st-swon', 'change', (e) => { setS('swingOn', e.target.checked); renderTransport(); });
   on('st-pc', 'change', (e) => setS('playChords', e.target.checked));
   on('st-click', 'change', (e) => setS('click', e.target.checked));
   on('st-count', 'change', (e) => setS('countIn', +e.target.value));
@@ -1493,7 +1537,7 @@ function renderSettings() {
   on('st-nbars', 'change', (e) => { setBarCount(+e.target.value); renderSettings(); });
   on('st-split', 'change', (e) => { setS('split', e.target.value); applySplit(); render(); });
   on('st-fold', 'click', () => { closeSheets(); alignFold(); });
-  for (const [id, key] of [['st-swing', 'swing'], ['st-reverb', 'reverb'], ['st-vm', 'volMelody'], ['st-vc', 'volChord'], ['st-vb', 'volBass'], ['st-vk', 'volClick']]) {
+  for (const [id, key] of [['st-swing', 'swingAmt'], ['st-reverb', 'reverb'], ['st-vm', 'volMelody'], ['st-vc', 'volChord'], ['st-vb', 'volBass'], ['st-vk', 'volClick']]) {
     on(id, 'input', (e) => { setS(key, +e.target.value); $('#' + id + '-v').textContent = Math.round(e.target.value * 100) + '%'; });
   }
 }
@@ -1590,7 +1634,7 @@ function renderCharts() {
 }
 function switchSong(id, opts = {}) {
   if (opts.saveCurrent !== false) syncCurrent();
-  if (seq.playing) seq.stop();
+  if (seq.playing || paused) stopPlay();
   S.song = deserialiseSong(S.charts.find((c) => c.id === id) || S.charts[0]);
   if (S.song.chartOnly && S.layer === 'melody') { S.layer = 'chords'; buildPanel(); }
   resetSelection(); render(); persist();

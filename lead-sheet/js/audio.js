@@ -314,14 +314,14 @@ export class Sequencer {
   }
 
   // range: { order: [cell], loop, meta }; fromIndex: where in the order to begin
-  start(range, fromIndex = 0) {
+  start(range, fromIndex = 0, opts = {}) {
     const ctx = this.engine.ensureContext();
     this.stop();
     const s = this.getSettings();
     this.range = range;
     this.pending = null;
     this.beat = fromIndex >= 0 && fromIndex < range.order.length ? fromIndex : 0;
-    this.countIn = (s.countIn || 0) * this.getTimeline().beatsPerBar;   // count-in beats still to click
+    this.countIn = opts.countIn === false ? 0 : (s.countIn || 0) * this.getTimeline().beatsPerBar;   // count-in beats still to click
     this.step = 0;
     this.nextTime = ctx.currentTime + 0.06;
     this.state = { lastBass: null };
@@ -414,7 +414,12 @@ export class Sequencer {
     }
     const t = this.nextTime;
     const beatStart = t - this.step * stepDur;
-    const swingAt = (frac) => { const d = (s.swing || 0) / 6; return frac < 0.5 ? frac * (0.5 + d) / 0.5 : 0.5 + d + (frac - 0.5) * (0.5 - d) / 0.5; };
+    // swing moves the off-beat eighth later (and sixteenths with it); triplets and other tuplets stay put
+    const sw = (s.swing || 0) / 6;
+    const swingAt = (frac) => {
+      if (!sw || Math.abs(frac * 16 - Math.round(frac * 16)) > 1e-6) return frac;
+      return frac < 0.5 ? frac * (0.5 + sw) / 0.5 : 0.5 + sw + (frac - 0.5) * (0.5 - sw) / 0.5;
+    };
     const when = beatStart + swingAt(this.step / 4) * beatDur;
 
     if (this.countIn > 0) {                         // count-in clicks
@@ -423,7 +428,7 @@ export class Sequencer {
       const cell = this.range.order[this.beat];
       const mid = tl.mid && tl.mid[cell];
       if (this.step === 0) {
-        if (this.onBeat) this.queue.push({ time: when, cell });
+        if (this.onBeat) this.queue.push({ time: when, cell, idx: this.beat });
         if (s.click) this.engine.click(when, bib(cell) === 0);
         // extra parts (e.g. a melody) schedule whatever starts during this beat
         if (this.onCell) for (const v of this.onCell(cell, beatStart, beatDur, swingAt) || []) this.voices.push(v);
