@@ -1,0 +1,11 @@
+Title: F blues · chord chart
+Composer: 12-bar jazz blues
+Key: F
+Time: 4/4
+Pickup: 0
+Tempo: 120
+Type: chord chart
+Chords:
+| F7 . . . | B♭7 . . . | F7 . . . | C-7 . F7 . |
+| B♭7 . . . | Bo7 . . . | F7 . . . | A-7 . D7 . |
+| G-7 . . . | C7 . . . | F7 . D7 . | G-7 . C7 . |

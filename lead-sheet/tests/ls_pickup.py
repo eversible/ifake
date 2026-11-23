@@ -7,7 +7,7 @@ async def main():
         ctx = await b.new_context(viewport={"width": 538, "height": 900}, device_scale_factor=3, is_mobile=True, has_touch=True)
         page = await ctx.new_page(); errs = []
         page.on("pageerror", lambda e: errs.append(str(e)))
-        await page.goto("http://127.0.0.1:8767/index.html"); await page.wait_for_timeout(1500)
+        await page.goto("http://127.0.0.1:8767/index.html?nosongs"); await page.wait_for_timeout(1500)
         J = page.evaluate
         await J("(() => { const S = __ls.S; S.settings.split = 'on'; S.settings.evenChords = true; S.settings.gridBars = 4; __ls.renderAll(); __ls.setLayer('chords'); S.cs = {m: 8, beat: 3, k: 0}; __ls.render(); })()")
         await page.wait_for_timeout(300)

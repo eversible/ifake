@@ -50,6 +50,11 @@ Melody:
 - Divided beats: `[C F]` splits a beat in two, `[C D E]` is an 8th-note triplet, `[C . F .]` is four 16ths, and `2[C D E]`
   is a quarter-note triplet over two beats. (Chord Pad can't read these.)
 
+## Songs from GitHub
+`songs/*.txt` (the Export text format) appear in the song list, tagged GitHub, the next time the app opens or comes
+back to the front. See `songs/README.md` for how updates, local edits and deletions are handled.
+`tools/stamp.py` writes `songs/index.json`.
+
 ## Publishing an update
 Run `python3 tools/stamp.py` first. It adds `?v=<content hash>` to every script and stylesheet URL in
 `index.html`, plus an import map for the modules, so phones always load the changed files instead of a cached copy.

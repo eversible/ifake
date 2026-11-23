@@ -8,7 +8,7 @@ async def main():
         page = await ctx.new_page(); errs = []
         page.on("pageerror", lambda e: errs.append(str(e)))
         page.on("console", lambda m: m.type == "error" and errs.append(m.text))
-        await page.goto("http://127.0.0.1:8767/index.html"); await page.wait_for_timeout(2000)
+        await page.goto("http://127.0.0.1:8767/index.html?nosongs"); await page.wait_for_timeout(2000)
         # real tap on the A7(b9) symbol switches to chords mode
         box = await page.evaluate("(() => { const t = document.querySelector('.chord-sym[data-cell=\"2:0\"]').getBoundingClientRect(); return {x: t.x + 8, y: t.y + t.height / 2}; })()")
         await page.touchscreen.tap(box['x'], box['y']); await page.wait_for_timeout(300)

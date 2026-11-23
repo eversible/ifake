@@ -27,6 +27,17 @@ html = re.sub(r'<script type="importmap">.*?</script>\n?', '', html, flags=re.S)
 html = html.replace('<script type="module"', block + '\n<script type="module"', 1)
 html_path.write_text(html)
 
+# ---- songs/index.json: the songs in songs/*.txt with a hash of each, so the app fetches only what changed
+songs_dir = ROOT / 'songs'
+if songs_dir.is_dir():
+    songs = []
+    for f in sorted(songs_dir.glob('*.txt')):
+        text = f.read_text()
+        title = next((l.split(':', 1)[1].strip() for l in text.splitlines() if l.lower().startswith('title:')), f.stem)
+        songs.append({'file': f.name, 'title': title, 'hash': hashlib.sha1(text.encode()).hexdigest()[:10]})
+    (songs_dir / 'index.json').write_text(json.dumps({'songs': songs}, ensure_ascii=False, indent=1) + '\n')
+    print('songs', len(songs))
+
 # ---- sw.js
 sw_path = ROOT / 'sw.js'
 if sw_path.exists():

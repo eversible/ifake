@@ -28,7 +28,7 @@ async def main():
         page = await ctx.new_page()
         cdp = await ctx.new_cdp_session(page)
         await cdp.send("Emulation.setDeviceMetricsOverride", {"width": 669, "height": 951, "deviceScaleFactor": 2, "mobile": True, "displayFeature": {"orientation": "horizontal", "offset": 472, "maskLength": 7}})
-        await page.goto("http://127.0.0.1:8767/index.html"); await page.wait_for_timeout(1500)
+        await page.goto("http://127.0.0.1:8767/index.html?nosongs"); await page.wait_for_timeout(1500)
         seg = await page.evaluate("JSON.stringify(window.viewport.segments.map(r => [r.top, r.height]))")
         top = await page.evaluate("document.querySelector('#topbar').getBoundingClientRect().top")
         chart = await page.evaluate("document.querySelector('#score-wrap').getBoundingClientRect().bottom")

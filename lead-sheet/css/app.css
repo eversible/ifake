@@ -394,3 +394,6 @@ body.grid-view #score svg { display: none; }
 body.grid-view #chordgrid { display: block; }
 #chordgrid .barno.gut { top: 50%; transform: translateY(-50%); text-align: right; font-size: 12px; }
 
+
+/* songs that came from the GitHub repo's songs/ folder */
+.gh-tag { font-size: 11px; font-weight: 600; color: #8e8e93; border: 1px solid #48484a; border-radius: 5px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; }

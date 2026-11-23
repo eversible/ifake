@@ -7,7 +7,7 @@ async def main():
         ctx = await b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
         page = await ctx.new_page(); errs = []
         page.on("pageerror", lambda e: errs.append(str(e))); page.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
-        await page.goto("http://127.0.0.1:8767/index.html"); await page.wait_for_timeout(2000)
+        await page.goto("http://127.0.0.1:8767/index.html?nosongs"); await page.wait_for_timeout(2000)
         J = page.evaluate
         key = lambda a, arg=None: page.click(f'#panel .key[data-action="{a}"]' + (f'[data-arg="{arg}"]' if arg is not None else ''))
         await J("__ls.setLayer('chords')")

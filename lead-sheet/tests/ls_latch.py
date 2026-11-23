@@ -10,7 +10,7 @@ async def main():
         cdp = await ctx.new_cdp_session(page)
         await cdp.send("Emulation.setDeviceMetricsOverride", {"width": 669, "height": 860, "deviceScaleFactor": 2, "mobile": True,
             "screenWidth": 669, "screenHeight": 951, "screenOrientation": {"type": "portraitPrimary", "angle": 0}})
-        await page.goto("http://127.0.0.1:8767/index.html"); await page.wait_for_timeout(1500)
+        await page.goto("http://127.0.0.1:8767/index.html?nosongs"); await page.wait_for_timeout(1500)
         J = page.evaluate
         await J("(() => { __ls.S.settings.split = 'on'; __ls.S.settings.pianoMode = 'edit'; __ls.renderAll(); })()")
         await J("""(() => { const e = __ls.engine; window.__strikes = []; let t0 = -1; const on = e.note.bind(e);

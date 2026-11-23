@@ -6,7 +6,7 @@ async def main():
         ctx = await b.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
         page = await ctx.new_page(); errs = []
         page.on("pageerror", lambda e: errs.append(str(e)))
-        await page.goto("http://127.0.0.1:8767/index.html"); await page.wait_for_timeout(2000)
+        await page.goto("http://127.0.0.1:8767/index.html?nosongs"); await page.wait_for_timeout(2000)
         # tap the A7(b9) chord symbol on the score (real tap at its position)
         box = await page.evaluate("(() => { const t = document.querySelector('.chord-sym[data-cell=\"2:0\"]').getBoundingClientRect(); return {x: t.x + 8, y: t.y + t.height / 2}; })()")
         await page.touchscreen.tap(box['x'], box['y']); await page.wait_for_timeout(300)

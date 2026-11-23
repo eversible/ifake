@@ -13,7 +13,7 @@ async def main():
         cdp = await ctx.new_cdp_session(page)
         await cdp.send("Emulation.setDeviceMetricsOverride", {"width": 951, "height": 585, "deviceScaleFactor": 2, "mobile": True,
                                                                 "displayFeature": {"orientation": "horizontal", "offset": 289, "maskLength": 7}})
-        await page.goto("http://127.0.0.1:8767/index.html"); await page.wait_for_timeout(2000)
+        await page.goto("http://127.0.0.1:8767/index.html?nosongs"); await page.wait_for_timeout(2000)
         J = page.evaluate
         async def shot(path):
             r = await cdp.send("Page.captureScreenshot", {"format": "png"}); open(path, "wb").write(base64.b64decode(r["data"]))

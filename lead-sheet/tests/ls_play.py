@@ -6,7 +6,7 @@ async def main():
         ctx = await b.new_context(viewport={"width": 844, "height": 390}, device_scale_factor=2, is_mobile=True, has_touch=True)
         page = await ctx.new_page(); errs = []
         page.on("pageerror", lambda e: errs.append(str(e))); page.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
-        await page.goto("http://127.0.0.1:8767/index.html"); await page.wait_for_timeout(2500)
+        await page.goto("http://127.0.0.1:8767/index.html?nosongs"); await page.wait_for_timeout(2500)
         J = page.evaluate
         await page.screenshot(path="/home/claude/shots/82_ls_landscape.png")
         # whole-song playback of the test chart: count melody notes through the repeat

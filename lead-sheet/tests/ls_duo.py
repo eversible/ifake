@@ -15,7 +15,7 @@ async def main():
                                                                 "displayFeature": {"orientation": "horizontal", "offset": 289, "maskLength": 7}})
         try: await cdp.send("Emulation.setDevicePostureOverride", {"posture": {"type": "folded"}})
         except Exception as e: print("posture override:", e)
-        await page.goto("http://127.0.0.1:8767/index.html"); await page.wait_for_timeout(2000)
+        await page.goto("http://127.0.0.1:8767/index.html?nosongs"); await page.wait_for_timeout(2000)
         J = page.evaluate
         async def shot(path):   # via CDP: Playwright's own screenshot resets the emulated fold
             r = await cdp.send("Page.captureScreenshot", {"format": "png"}); open(path, "wb").write(base64.b64decode(r["data"]))

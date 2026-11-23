@@ -15,7 +15,7 @@ async def main():
             page.on("pageerror", lambda e: errs.append(str(e)))
             cdp = await ctx.new_cdp_session(page)
             await cdp.send("Emulation.setDeviceMetricsOverride", {**metrics, "deviceScaleFactor": 2, "mobile": True})
-            await page.goto("http://127.0.0.1:8767/index.html"); await page.wait_for_timeout(1500)
+            await page.goto("http://127.0.0.1:8767/index.html?nosongs"); await page.wait_for_timeout(1500)
             J = page.evaluate
             if mode == "on":
                 await J("(() => { __ls.S.settings.split = 'on'; __ls.renderAll(); })()"); await page.wait_for_timeout(300)

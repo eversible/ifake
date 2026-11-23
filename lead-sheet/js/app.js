@@ -63,13 +63,78 @@ function loadData(data) {
     S.charts = data.charts; S.deleted = data.deleted || {};
     S.song = deserialiseSong(S.charts.find((c) => c.id === data.currentId) || S.charts[0]);
   } else {
-    S.song = songFromText(DEMO_SONG_TEXT);
-    S.charts = [{ ...serialiseSong(S.song), updatedAt: Date.now() }];
+    S.charts = [demoChart()];
+    S.song = deserialiseSong(S.charts[0]);
     S.deleted = {};
   }
   S.lastSettingsJSON = JSON.stringify(S.settings);
   resetSelection();
   applyAudioSettings();
+}
+// The test chart shown when there are no songs yet. It has a fixed id and an old date, so it never
+// outranks a real copy, and tidyLibrary drops it once real songs arrive (from the account or GitHub).
+const DEMO_ID = 'demo-stella';
+function demoChart() { const s = songFromText(DEMO_SONG_TEXT); s.id = DEMO_ID; return { ...serialiseSong(s), updatedAt: 1 }; }
+const normChart = (c) => { try { const o = serialiseSong(deserialiseSong(c)); delete o.id; return JSON.stringify(o); } catch (e) { return null; } };
+// Unedited copies of the test chart pile up when an empty browser meets the account copy: keep one.
+function tidyLibrary() {
+  syncCurrent();
+  const demo = normChart(demoChart());
+  const copies = S.charts.filter((c) => normChart(c) === demo);
+  if (!copies.length) return false;
+  const others = S.charts.length - copies.length;
+  const real = copies.filter((c) => c.id !== DEMO_ID);
+  const keep = others && !real.length ? null
+    : (copies.find((c) => c.id === S.song.id && c.id !== DEMO_ID) || real.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] || copies[0]);
+  const drop = copies.filter((c) => c !== keep);
+  if (!drop.length) return false;
+  const now = Date.now();
+  for (const c of drop) S.deleted[c.id] = now;
+  S.charts = S.charts.filter((c) => !drop.includes(c));
+  if (!S.charts.some((c) => c.id === S.song.id)) { S.song = deserialiseSong(S.charts.find((c) => c === keep) || S.charts[0]); resetSelection(); }
+  return true;
+}
+
+// ---- songs from GitHub: lead-sheet/songs/*.txt (listed in songs/index.json by tools/stamp.py) are added
+// to the library. A song changed on GitHub replaces the copy here, unless that copy was edited here: then
+// the edited copy is kept alongside as "… (my edits)". Deleting a GitHub song here keeps it deleted.
+let repoSyncing = false;
+async function syncRepoSongs() {
+  if (repoSyncing) return;
+  repoSyncing = true;
+  try { await syncRepoSongsNow(); } finally { repoSyncing = false; }
+}
+async function syncRepoSongsNow() {
+  if (/[?&]nosongs\b/.test(location.search)) return;          // tests start from the test chart
+  let list;
+  try { const r = await fetch('songs/index.json', { cache: 'no-cache' }); if (!r.ok) return; list = (await r.json()).songs || []; } catch (e) { return; }
+  const added = [], updated = [], kept = [];
+  for (const e of list) {
+    const id = 'gh:' + e.file.replace(/\.txt$/, '');
+    if (S.deleted[id]) continue;
+    syncCurrent();
+    const local = S.charts.find((c) => c.id === id);
+    if (local && local.gh === e.hash) continue;
+    let s;
+    try { const r = await fetch('songs/' + encodeURIComponent(e.file) + '?v=' + e.hash); if (!r.ok) continue; s = songFromText(await r.text()); } catch (err) { continue; }
+    s.id = id;
+    const now = Date.now(), chart = { ...serialiseSong(s), gh: e.hash, ghAt: now, updatedAt: now };
+    syncCurrent();
+    const idx = S.charts.findIndex((c) => c.id === id), cur = idx >= 0 ? S.charts[idx] : null;
+    if (!cur) { S.charts.push(chart); added.push(s.title); continue; }
+    if ((cur.updatedAt || 0) > (cur.ghAt || 0)) {          // edited here since it last came from GitHub
+      const mine = { ...cur, id: uid(), title: cur.title + ' (my edits)', updatedAt: now };
+      delete mine.gh; delete mine.ghAt;
+      S.charts.splice(idx + 1, 0, mine); kept.push(mine.title);
+    }
+    S.charts[idx] = chart; updated.push(s.title);
+    if (S.song.id === id) { S.song = deserialiseSong(chart); clampSelection(); invalidate(); }
+  }
+  const tidied = tidyLibrary();
+  if (!added.length && !updated.length && !tidied) return;
+  persist(); renderAll();
+  const n = added.length + updated.length;
+  if (n) toast(kept.length ? `${n} song${n > 1 ? 's' : ''} from GitHub · your edits kept as "${kept[0]}"` : `${n} song${n > 1 ? 's' : ''} from GitHub`);
 }
 function resetSelection() {
   S.cursor = { m: S.song.pickup ? 0 : 0, pos: 0 }; S.sel = null; S.picked = false; S.cs = { m: S.song.pickup ? 1 : 0, beat: 0 };
@@ -80,6 +145,7 @@ function syncCurrent() {
   const ser = serialiseSong(S.song);
   const idx = S.charts.findIndex((c) => c.id === S.song.id);
   const old = idx >= 0 ? S.charts[idx] : null;
+  if (old && old.gh) { ser.gh = old.gh; ser.ghAt = old.ghAt; }
   const strip = (c) => JSON.stringify({ ...c, updatedAt: 0 });
   ser.updatedAt = old && strip(old) === strip(ser) ? old.updatedAt : Date.now();
   if (idx >= 0) S.charts[idx] = ser; else S.charts.unshift(ser);
@@ -107,6 +173,7 @@ function applyExternal(merged) {
   const theirs = S.charts.find((c) => c.id === S.song.id);
   if (!theirs) { S.song = deserialiseSong(S.charts[0]); resetSelection(); }
   else if (!mine || (theirs.updatedAt || 0) > (mine.updatedAt || 0)) { S.song = deserialiseSong(theirs); clampSelection(); invalidate(); }
+  if (tidyLibrary()) persistSoon();
   renderAll();
   toast('Songs updated from another device or tab');
 }
@@ -1475,7 +1542,7 @@ function renderCharts() {
   persist();
   const items = S.charts.map((c) => `
     <div class="chart-item${c.id === S.song.id ? ' current' : ''}" data-id="${c.id}">
-      <span class="name" data-open>${esc(c.title)}</span><button data-dup>Duplicate</button><button data-del>Delete</button>
+      <span class="name" data-open>${esc(c.title)}${c.gh ? ' <small class="gh-tag">GitHub</small>' : ''}</span><button data-dup>Duplicate</button><button data-del>Delete</button>
     </div>`).join('');
   $('#charts-body').innerHTML = `
     <div class="btn-row"><button class="btn" id="ch-new">New song</button><button class="btn" id="ch-new-chart">New chord chart</button><button class="btn secondary" id="ch-demo">Add test chart</button></div>
@@ -1624,8 +1691,11 @@ async function boot() {
   preloadInstruments();
   ['pointerdown', 'touchend', 'click', 'keydown'].forEach((ev) => document.addEventListener(ev, () => engine.unlock(), { passive: true }));
   store.watchTabs();
-  store.connectRemote(() => libraryData()).then(updateSyncLabel);
+  if (tidyLibrary()) persist();
+  store.connectRemote(() => libraryData()).then(updateSyncLabel).then(syncRepoSongs);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncRepoSongs(); });
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* not offered */ }
   if ('serviceWorker' in navigator && window.self === window.top && (location.protocol === 'https:' || location.hostname === 'localhost') && !location.hostname.endsWith('claude.ai')) navigator.serviceWorker.register('sw.js').catch(() => {});
-  window.__ls = { S, engine, seq, keyAction, enterPitch, render, renderAll, renderOverlay, playRange, timeline, libraryData, setLayer, tapScore, alignFold };   // for testing
+  window.__ls = { S, engine, seq, keyAction, enterPitch, render, renderAll, renderOverlay, playRange, timeline, libraryData, setLayer, tapScore, alignFold, syncRepoSongs, tidyLibrary };   // for testing
 }
 boot();
