@@ -1,4 +1,4 @@
-# Music apps
+# Music apps (ifake)
 
 Two personal web apps, hosted on GitHub Pages:
 

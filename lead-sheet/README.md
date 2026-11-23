@@ -54,7 +54,7 @@ Melody:
 Run `python3 tools/stamp.py` first. It adds `?v=<content hash>` to every script and stylesheet URL in
 `index.html`, plus an import map for the modules, so phones always load the changed files instead of a cached copy.
 It also refreshes `BUILD` and the offline file list in `sw.js`. The same app is hosted on GitHub Pages from the
-`music-apps` repo (see the README there).
+`ifake` repo (eversible.github.io/ifake) (see the README there).
 
 ## Run locally
 Run any static server, for example `python3 -m http.server` in this folder, then open http://localhost:8000.
