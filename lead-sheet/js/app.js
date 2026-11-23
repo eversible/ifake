@@ -80,7 +80,7 @@ const normChart = (c) => { try { const o = serialiseSong(deserialiseSong(c)); de
 function tidyLibrary() {
   syncCurrent();
   const demo = normChart(demoChart());
-  const copies = S.charts.filter((c) => normChart(c) === demo);
+  const copies = S.charts.filter((c) => !c.gh && normChart(c) === demo);     // GitHub songs are left alone
   if (!copies.length) return false;
   const others = S.charts.length - copies.length;
   const real = copies.filter((c) => c.id !== DEMO_ID);

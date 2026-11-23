@@ -4,6 +4,11 @@
    "file": "f-blues.txt",
    "title": "F blues · chord chart",
    "hash": "6e14152368"
+  },
+  {
+   "file": "stella-test.txt",
+   "title": "Stella changes · test melody",
+   "hash": "ab46bf128a"
   }
  ]
 }
