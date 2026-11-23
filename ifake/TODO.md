@@ -28,5 +28,5 @@
 - [ ] Key-aware spelling when transposing (sharps in sharp keys).
 
 ## Sister app
-- The melody editor lives in a separate app, `pro/` (iFake Pro). It reuses `chords.js`, `voicing.js`, `audio.js`,
+- The melody editor lives in a separate app, `../ifake-pro/` (iFake Pro). It reuses `chords.js`, `voicing.js`, `audio.js`,
   `store.js` and `form.js`; fixes to those files should be copied across (or both apps moved into one repo with a shared folder).

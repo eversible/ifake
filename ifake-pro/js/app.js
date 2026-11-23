@@ -96,7 +96,7 @@ function tidyLibrary() {
   return true;
 }
 
-// ---- songs from GitHub: pro/songs/*.txt (listed in songs/index.json by tools/stamp.py) are added
+// ---- songs from GitHub: ifake-pro/songs/*.txt (listed in songs/index.json by tools/stamp.py) are added
 // to the library. A song changed on GitHub replaces the copy here, unless that copy was edited here: then
 // the edited copy is kept alongside as "… (my edits)". Deleting a GitHub song here keeps it deleted.
 let repoSyncing = false;
