@@ -26,7 +26,7 @@ const mod = (a, n) => ((a % n) + n) % n;
 const DEFAULT_SETTINGS = {
   loop: true, melodyInst: 'altosax', chordInst: 'piano', bassInst: 'upbass', compPattern: 'block', bassPattern: 'off',
   voicing: 'smooth', swing: 0, swingOn: true, swingAmt: 0.8, click: false, countIn: 0, reverb: 0.15,
-  volMelody: 0.9, volChord: 0.65, volBass: 0.8, volClick: 0.5, audition: true, playMelody: true, playChords: true, scoreBars: 'auto', gridBars: 4, evenChords: false, split: 'auto', foldAdjust: 0, pianoMode: 'draft', draftLatch: true,
+  volMelody: 0.9, volChord: 0.65, volBass: 0.8, volClick: 0.5, audition: true, playMelody: true, playChords: true, scoreBars: 'auto', gridBars: 4, evenChords: false, split: 'auto', foldAdjust: 0, pianoMode: 'draft', draftLatch: true, draftFollowChords: true, draftFollowMelody: false,
 };
 
 // ---------------------------------------------------------------- state
@@ -41,7 +41,8 @@ const S = {
   dur: { b: 4, d: 0 }, tup: 0,        // current entry duration and tuplet
   bigBase: 48,                        // split layout: big piano's lowest C
   ck: { notes: [], dirty: false, slot: '', text: '' }, strikes: [],   // Chords + Edit: the latched keys (see chordEdit)
-  sketch: { notes: [] },              // Draft + Latch outside the Chords tab: the keys down on a free sketchpad
+  sketch: { notes: [] },              // Draft + Latch not following the selection: a free sketchpad
+  nk: { notes: [], dirty: false, key: '' },   // Draft + Latch following the selected note (Melody tab)
   held: new Map(),                    // draft mode: pointerId → { midi, h } for keys held down
   pianoBase: 60,                      // lowest C on the piano strip
   cs: { m: 0, beat: 0 },              // selected chord cell
@@ -508,7 +509,7 @@ function buildBigPiano() {
     <button data-bp="down" aria-label="Octave down">‹ oct</button><div class="bp-name"></div>
     <button data-bp="strike" aria-label="Play the chord">▶</button><button data-bp="clear" aria-label="Release all keys">Clear</button>
     <button data-bp="write" class="bp-write" aria-label="Write the chord into the selected slot">Write</button>
-    <button data-bp="latch" class="bp-latch" aria-label="Keys stay down until tapped again">Latch</button><button data-bp="up" aria-label="Octave up">oct ›</button></div>
+    <button data-bp="follow" class="bp-follow" aria-label="Start the keys from the selection">Follow</button><button data-bp="latch" class="bp-latch" aria-label="Keys stay down until tapped again">Latch</button><button data-bp="up" aria-label="Octave up">oct ›</button></div>
     <div class="bp-keys">${keys}</div>`;
   updateBigPiano();
 }
@@ -520,9 +521,25 @@ function chordEdit() {
   ck.slot = slot; ck.text = text;
   return ck;
 }
-// the latched keys: in the Chords tab they follow the selected chord (chordEdit, shared by Edit and Draft);
-// elsewhere Draft has a free sketchpad
-const latchSet = () => (S.layer === 'chords' ? chordEdit() : S.sketch);
+// Draft + Latch can start from the selection: the selected chord's keys (Chords tab, on by default) or the
+// selected note (Melody tab, off by default); Follow in the piano bar switches it per tab. Not following,
+// the keys are a free sketchpad. Keys you change stay as they are until Write or Clear.
+const followSel = () => (S.layer === 'chords' ? S.settings.draftFollowChords !== false : S.layer === 'melody' ? !!S.settings.draftFollowMelody : false);
+function noteEdit() {
+  const nk = S.nk, e = selEv(), key = S.sel ? `${S.sel.m}:${S.sel.i}:${e && !e.r ? e.p : 'r'}` : '';
+  if (!nk.dirty && key !== nk.key) {
+    nk.notes = e && !e.r ? [midiOf(e.p)] : [];
+    // keep the note on the keyboard: move the piano by octaves if it's off either end
+    const n = nk.notes[0], span = 12 * (S.bigOct || bigOctaves());
+    if (n !== undefined && (n < S.bigBase || n > S.bigBase + span)) {
+      S.bigBase = Math.max(24, Math.min(96 - span, 12 * Math.floor(n / 12) - 12));
+      queueMicrotask(buildBigPiano);
+    }
+  }
+  nk.key = key;
+  return nk;
+}
+const latchSet = () => (!followSel() ? S.sketch : S.layer === 'chords' ? chordEdit() : noteEdit());
 function bigPianoNotes() {
   if (S.layer === 'chords') return chordEdit().notes;
   const e = selEv();
@@ -544,6 +561,10 @@ function updateBigPiano() {
   const name = el.querySelector('.bp-name');
   const latchBtn = el.querySelector('[data-bp="latch"]');
   latchBtn.hidden = !draft; latchBtn.classList.toggle('on', !!S.settings.draftLatch);
+  const followBtn = el.querySelector('[data-bp="follow"]');
+  followBtn.hidden = !(draft && S.settings.draftLatch && (S.layer === 'chords' || S.layer === 'melody'));
+  followBtn.classList.toggle('on', followSel());
+  followBtn.setAttribute('aria-label', S.layer === 'chords' ? 'Start the keys from the selected chord' : 'Start the keys from the selected note');
   if (draft) {
     // draft: just playing — keys latch (tap on/off) or sound while held, and the chord is named. Nothing
     // goes into the song unless you tap Write (Chords tab): then it goes into the selected slot
@@ -630,6 +651,14 @@ function bigPianoBar(what) {
     updateBigPiano(); return;
   }
   if (what === 'up' || what === 'down') { S.bigBase = Math.max(24, Math.min(96 - 12 * bigOctaves(), S.bigBase + (what === 'up' ? 12 : -12))); buildBigPiano(); }
+  if (what === 'follow') {
+    const k = S.layer === 'chords' ? 'draftFollowChords' : 'draftFollowMelody', on = !followSel();
+    S.settings[k] = on; persistSoon();
+    if (on) { const ls = latchSet(); ls.dirty = false; ls.key = ''; ls.slot = ''; }   // pick up the selection now
+    const what2 = S.layer === 'chords' ? 'chord' : 'note';
+    toast(on ? `Draft starts from the selected ${what2}` : 'Draft keys are a free sketch');
+    updateBigPiano(); return;
+  }
   if (what === 'latch') {
     S.settings.draftLatch = !S.settings.draftLatch; persistSoon();
     for (const id of [...S.held.keys()]) draftUp(id);
@@ -639,7 +668,8 @@ function bigPianoBar(what) {
   if (draftMode()) {
     const ls = latchSet();
     if (what === 'strike') strikeChord(ls.notes);
-    if (what === 'clear') { ls.notes = []; ls.dirty = true; strikeChord([]); }
+    // following the selection, Clear also lets the next selection load again
+    if (what === 'clear') { ls.notes = []; ls.dirty = !followSel(); strikeChord([]); }
     updateBigPiano(); return;
   }
   if (S.layer !== 'chords') return;
@@ -1594,7 +1624,7 @@ function renderCharts() {
     <div class="group"><h3>Export this song as text</h3><textarea class="io" id="ch-export" readonly>${esc(songToText(S.song))}</textarea>
       <div class="btn-row"><button class="btn secondary" id="ch-copy">Copy</button></div></div>
     <div class="group"><h3>Import</h3>
-      <textarea class="io" id="ch-import" placeholder="Paste a song exported from here, or a chart exported from Chord Pad"></textarea>
+      <textarea class="io" id="ch-import" placeholder="Paste a song exported from here, or a chart exported from iFake"></textarea>
       <div class="btn-row"><button class="btn secondary" id="ch-import-go">Import as new song</button></div>
       <p class="hint" id="ch-import-msg"></p></div>`;
   $('#charts-body').querySelectorAll('.chart-item').forEach((row) => {
@@ -1653,7 +1683,7 @@ function bindGlobal() {
   $('#btn-settings').addEventListener('click', () => openSheet('settings'));
   $('#btn-even').addEventListener('click', () => {
     S.settings.evenChords = !S.settings.evenChords; persistSoon(); render();
-    toast(S.settings.evenChords ? 'Even: chords spaced as in Chord Pad (melody hidden)' : 'Chords over the score');
+    toast(S.settings.evenChords ? 'Even: chords spaced as in iFake (melody hidden)' : 'Chords over the score');
   });
   $('#btn-charts').addEventListener('click', () => openSheet('charts'));
   $('#title').addEventListener('click', () => openSheet('charts'));

@@ -1,9 +1,11 @@
-# Music apps (ifake)
+# iFake
 
 Two personal web apps, hosted on GitHub Pages:
 
-- [`lead-sheet/`](lead-sheet/): a small MuseScore-like editor with a melody layer and a chord layer, plus a split view with a full-width piano for foldables.
-- [`chord-pad/`](chord-pad/): an iReal Pro-style chord chart player.
+- [`lead-sheet/`](lead-sheet/): **iFake Pro**, a small MuseScore-like editor with a melody layer and a chord layer, plus a split view with a full-width piano for foldables.
+- [`chord-pad/`](chord-pad/): **iFake**, an iReal Pro-style chord chart player.
+
+The folders keep their old names so the web addresses (and Home Screen icons) stay the same.
 
 Each app is self-contained (its own `README.md`, `DECISIONS.md`, `TODO.md`, tests and samples). The root `index.html` just links to both.
 

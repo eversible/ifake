@@ -364,6 +364,7 @@ body.split #bigpiano { grid-area: piano; display: flex; }
 #bigpiano .bp-bar button:not(.bp-name):disabled { opacity: 0.4; }
 #bigpiano .bp-write.ready { background: #0a84ff; color: #fff; font-weight: 600; }
 #bigpiano .bp-latch.on { background: #ff9f0a; color: #1c1c1e; font-weight: 600; }
+#bigpiano .bp-follow.on { background: #0a84ff; color: #fff; font-weight: 600; }
 #bigpiano .bp-name.none { color: #8e8e93; font: 13px var(--ui-font); }
 #bigpiano .bp-keys { position: relative; flex: 1; min-height: 0; touch-action: none; }
 #bigpiano .pk { position: absolute; top: 0; box-sizing: border-box; border-radius: 0 0 6px 6px; }

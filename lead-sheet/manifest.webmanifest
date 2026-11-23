@@ -1,6 +1,6 @@
 {
-  "name": "Lead Sheet",
-  "short_name": "Lead Sheet",
+  "name": "iFake Pro",
+  "short_name": "iFake Pro",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

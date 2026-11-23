@@ -1,4 +1,4 @@
-# Lead Sheet
+# iFake Pro (formerly Lead Sheet)
 
 A small MuseScore-style lead-sheet editor for iPhone, iPad and Mac. It has two layers on one staff: the **melody**
 (notes, rests, dots, tuplets and ties) and the **chords** (Chord Pad's chord engine), with repeats and endings. You can

@@ -1,6 +1,6 @@
 {
-  "name": "Chord Pad",
-  "short_name": "Chord Pad",
+  "name": "iFake",
+  "short_name": "iFake",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

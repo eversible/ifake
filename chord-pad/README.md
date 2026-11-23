@@ -1,4 +1,4 @@
-# Chord Pad
+# iFake (formerly Chord Pad)
 
 A chord-chart sketchpad for iPhone, iPad and Mac: type or tap chords into an iReal Pro-style grid, hear them instantly,
 and loop any section while you change it. Chord spelling comes from a JavaScript port of the Julia
