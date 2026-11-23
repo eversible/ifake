@@ -467,9 +467,19 @@ function foldInfo(ev) {
     ` · est ${hingeEstimate(h) ?? '—'} · adj ${S.settings.foldAdjust || 0} · line ${getComputedStyle(document.documentElement).getPropertyValue('--seg0').trim()} · touch Δ ${lastTouch}`;
 }
 document.addEventListener('touchstart', foldInfo, { passive: true, capture: true });
+// Without the fold APIs (Safari has them behind feature flags), recognise the iPhone Duo's inner screen
+// (669 × 951 points; inside the Claude app the page sees 669 × ~870): held upright, it folds across the middle.
+// A posture of "folded" also counts ("continuous" is what non-foldables report, so it can't rule the Duo out).
+function foldableScreen() {
+  try {
+    if (navigator.devicePosture && navigator.devicePosture.type === 'folded') return true;
+    const a = Math.min(screen.width, screen.height), b = Math.max(screen.width, screen.height);
+    return a >= 640 && a <= 700 && b >= 820 && b <= 1000 && window.innerWidth < window.innerHeight;
+  } catch (e) { return false; }
+}
 function applySplit() {
   const mode = S.settings.split || 'auto', sg = foldSegments();
-  let on = mode === 'on' || (mode === 'auto' && !!sg);
+  let on = mode === 'on' || (mode === 'auto' && (!!sg || foldableScreen()));
   const root = document.documentElement.style;
   if (on && sg && mode !== 'off') {
     root.setProperty('--seg0', sg[0].height + 'px');
@@ -569,8 +579,11 @@ function updateBigPiano() {
     // draft: just playing — keys latch (tap on/off) or sound while held, and the chord is named. Nothing
     // goes into the song unless you tap Write (Chords tab): then it goes into the selected slot
     const latch = !!S.settings.draftLatch, down = latch ? latchSet().notes : heldNotes();
-    const c = down.length > 1 ? nameChord(down, S.song.key.fifths) : null, own = csChord();
+    const built = S.draftSet && S.draftSet.key === down.join() ? S.draftSet.chord : null;
+    const c = built || (down.length > 1 ? nameChord(down, S.song.key.fifths) : null), own = csChord();
     S.draftChord = c;
+    const txt = c ? chordText(c) : '';
+    if (txt !== S.draftText) { S.draftText = txt; if (S.layer === 'chords') queueMicrotask(updatePanel); }
     name.className = 'bp-name' + (c ? '' : ' none');
     name.textContent = c ? chordText(c) : down.length ? (latch ? 'No chord name for these notes' : '') : latch ? 'Draft: tap keys on/off' : 'Draft: play freely';
     const write = el.querySelector('[data-bp="write"]'), same = c && own && chordText(c) === chordText(own);
@@ -640,7 +653,7 @@ function bigPianoBar(what) {
     S.settings.pianoMode = what; persistSoon();
     for (const id of [...S.held.keys()]) draftUp(id);
     toast(what === 'edit' ? (S.layer === 'melody' ? 'Edit: keys enter notes' : 'Edit: tap keys on/off to build a chord, then Write') : 'Draft: keys just play, nothing is written');
-    updateBigPiano(); return;
+    updateBigPiano(); updatePanel(); return;
   }
   if (what === 'write' && draftMode()) {               // draft: put the drafted chord in the selected slot
     if (!S.draftChord || S.layer !== 'chords') return;
@@ -663,7 +676,7 @@ function bigPianoBar(what) {
     S.settings.draftLatch = !S.settings.draftLatch; persistSoon();
     for (const id of [...S.held.keys()]) draftUp(id);
     toast(S.settings.draftLatch ? 'Latch: keys stay down until tapped again' : 'Keys play while held');
-    updateBigPiano(); return;
+    updateBigPiano(); updatePanel(); return;
   }
   if (draftMode()) {
     const ls = latchSet();
@@ -956,7 +969,7 @@ function updatePanel() {
     else if (a === 'undo') dim = !S.undo.length;
     else if (a === 'redo') dim = !S.redo.length;
     else if (S.layer === 'chords') {
-      const c = csChord(), chord = c && !c.nc ? c : null;
+      const c = draftChords() ? S.draftChord : csChord(), chord = c && !c.nc ? c : null;
       if (a === 'root') on = !!chord && !S.bassMode && LETTERS[chord.root.letter] === arg;
       else if (a === 'cacc') { const n = chord && (S.target === 'bass' && chord.bass ? chord.bass : chord.root); on = !!n && n.acc === +arg; dim = !chord; }
       else if (a === 'slash') { on = S.bassMode || !!(chord && chord.bass); dim = !chord; }
@@ -1099,7 +1112,8 @@ function keyAction(action, arg) {
 }
 
 // ---------------------------------------------------------------- chord actions (Chord Pad rules)
-function setCell(c) { edit(() => { setSlot(csMeas(), S.cs.beat, S.cs.k || 0, c); }, { hear: () => hearChordAt(S.cs.m, csPos()) }); }
+function setSlotChord(c) { edit(() => { setSlot(csMeas(), S.cs.beat, S.cs.k || 0, c); }, { hear: () => hearChordAt(S.cs.m, csPos()) }); }
+const setCell = setSlotChord;
 function divideBeat(arg) {
   const meas = csMeas(), b = S.cs.beat, d = arg === 't' ? 't' : +arg;
   if (d === 't' && b >= meas.ch.length - 1) { toast('A quarter-note triplet needs this beat and the next'); return; }
@@ -1109,8 +1123,19 @@ function divideBeat(arg) {
   edit(() => { dropped = setDivision(meas, b, d); S.cs.k = d === 1 ? 0 : 1; });
   if (dropped > 0) toast(`${dropped} chord${dropped > 1 ? 's' : ''} had no slot left`);
 }
+// Draft (latched keys, Chords tab, piano showing): the chord keys show the drafted chord and change it,
+// rebuilding the keys; Write puts it in the slot. Otherwise they edit the selected slot.
+const draftChords = () => S.layer === 'chords' && draftMode() && !!S.settings.draftLatch && !$('#bigpiano').hidden;
+function setDraft(d) {
+  const ls = latchSet(), notes = d ? chordKeys(d, S.bigBase) : [];
+  ls.notes = notes; ls.dirty = true;
+  S.draftSet = d ? { key: notes.join(), chord: cloneChord(d) } : null;   // keep the spelling as built
+  strikeChord(notes); updateBigPiano(); updatePanel();
+}
 function chordKey(action, arg) {
-  const c = csChord();
+  const drafting = draftChords() && !['nc', 'cdel'].includes(action);
+  const c = drafting ? S.draftChord : csChord();
+  const setCell = drafting ? setDraft : setSlotChord;
   const need = () => { if (!c) { toast('Tap a root note first'); return null; } if (c.nc) { toast('N.C. — tap a root to make it a chord'); return null; } return c; };
   switch (action) {
     case 'root': {
