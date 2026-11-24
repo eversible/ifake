@@ -748,7 +748,9 @@ function draftUp(id) {
 function bigPianoBar(what) {
   const menu = $('#bigpiano .bp-menu');
   if (what === 'more') { menu.hidden = !menu.hidden; return; }
-  if (menu) menu.hidden = true;
+  const inMenu = what === 'clear' || what === 'follow' || what === 'latch';
+  if (menu && what === 'clear') afterTap(() => { menu.hidden = true; });
+  else if (menu && !inMenu) menu.hidden = true;
   if (what === 'edit' || what === 'draft') {
     S.settings.pianoMode = what; persistSoon();
     for (const id of [...S.held.keys()]) draftUp(id);
@@ -1504,6 +1506,17 @@ let startToken = 0;
 // drops the place, so ▶ starts from the selection as usual.
 let paused = null, lastCur = null;
 let pianoDrag = null;                 // the keyboard being slid by a swipe
+// a tap that only closed a popup mustn't also click whatever was under it
+let swallowUntil = 0;
+const swallowClick = () => { swallowUntil = performance.now() + 500; };
+// run fn when the current tap is over (its click has gone to the element it started on)
+function afterTap(fn) {
+  let done = false;
+  const go = () => { if (done) return; done = true; document.removeEventListener('click', late, true); setTimeout(fn, 0); };
+  const late = () => go();
+  document.addEventListener('click', late, true);
+  setTimeout(go, 700);
+}
 const selKey = () => JSON.stringify([S.song.id, S.layer, S.cursor, S.cs, S.bars]);
 function checkPause() {
   if (paused && paused.selKey !== selKey()) { paused = null; S.keysTouched = false; playingAt = null; setMelNow(new Set()); queueMicrotask(renderInfo); }
@@ -2001,10 +2014,14 @@ function bindGlobal() {
   try { if (navigator.devicePosture) navigator.devicePosture.addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
   try { matchMedia('(vertical-viewport-segments: 2)').addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
   const bp = $('#bigpiano');
-  document.addEventListener('pointerdown', (e) => {          // a tap anywhere else closes the ⋯ menu
+  document.addEventListener('pointerdown', (e) => {          // a tap anywhere else just closes the ⋯ menu
     const menu = $('#bigpiano .bp-menu');
-    if (menu && !menu.hidden && !e.target.closest('.bp-menu, [data-bp="more"]')) menu.hidden = true;
+    if (menu && !menu.hidden && !e.target.closest('.bp-menu, [data-bp="more"]')) {
+      menu.hidden = true;
+      e.preventDefault(); e.stopPropagation(); swallowClick();       // …without pressing what's under it
+    }
   }, true);
+  document.addEventListener('click', (e) => { if (performance.now() < swallowUntil) { e.preventDefault(); e.stopPropagation(); } }, true);
   // the keys: a tap plays (or toggles) a key; a sideways swipe slides the keyboard along, and it settles
   // on the nearest white key. Keys that sound while held start at once and stop if the touch turns into a swipe
   const touches = new Map();
