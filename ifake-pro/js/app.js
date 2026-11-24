@@ -483,27 +483,19 @@ function cssHeight(v) {
 }
 // how tall the status-bar band is (0 in Safari or inside another app)
 const safeTop = () => cssHeight('env(safe-area-inset-top)');
-// the whole screen's height. iOS can shrink a Home Screen app's page (innerHeight) and leave a dead black
-// strip at the bottom that nothing can draw into; 100vh still measures the whole screen
+// the whole screen's height. A Home Screen app on iOS (page under the status bar) reports its page a status bar
+// short (innerHeight), and anything position: fixed stops there, leaving a strip at the bottom; 100vh is the
+// whole screen, and ordinary (not fixed) content draws all the way down
 const screenHeight = () => (standalone() ? Math.max(window.innerHeight, Math.round(cssHeight('100vh'))) : window.innerHeight);
-// …and the usual cure: hide the full-height app and show it again, which makes WebKit measure the page again
-let healing = false;
-function healViewport() {
-  if (healing || !standalone() || screenHeight() - window.innerHeight <= 4) return;
-  healing = true;
-  const el = $('#app'), keep = [...document.querySelectorAll('#score-wrap, #chart-wrap, #panel')].map((s) => [s, s.scrollTop]);
-  el.style.display = 'none'; void el.offsetHeight; el.style.display = '';
-  keep.forEach(([s, y]) => { s.scrollTop = y; });
-  setTimeout(() => { healing = false; applySplit(); render(); }, 60);
-}
 function applySplit() {
   const mode = S.settings.split || 'auto', sg = foldSegments();
   let on = mode === 'on' || (mode === 'auto' && (!!sg || foldableScreen()));
   const root = document.documentElement.style;
   const adj = S.settings.foldAdjust || 0;
-  // the app fills what can be drawn (a stuck-short page leaves the strip below it black)
-  const h = window.innerHeight;
+  // the app fills the whole screen (it isn't position: fixed, so it isn't cut off a status bar short)
+  const h = screenHeight();
   root.setProperty('--app-h', h + 'px');
+  document.documentElement.classList.toggle('split', on);
   if (on && standalone()) {
     // a Home Screen app: the line is placed on the screen (its middle plus your offset), so it stays put
     // whether the phone is folded or flat and whether or not iOS has shrunk the page; the fold reported
@@ -535,21 +527,45 @@ function applySplit() {
 // a chord by pressing notes — the lowest note is the root; the name is written into the selected slot.
 // as many octaves as fit with comfortable keys (white keys ~40–65 px): 2 on a narrow screen, 3 on a wide one
 const bigOctaves = () => (window.innerWidth >= 860 ? 3 : 2);
+// the big piano is one strip of keys from C1 to C7 that slides sideways; the window shows 2 (or 3) octaves'
+// worth of white keys starting at S.bigBase (any white key: a swipe snaps to the nearest one)
+const PIANO_LO = 24, PIANO_HI = 96;
+const isBlack = (m) => [1, 3, 6, 8, 10].includes(mod(m, 12));
+const pianoWhites = (() => { const w = []; for (let m = PIANO_LO; m <= PIANO_HI; m++) if (!isBlack(m)) w.push(m); return w; })();
+const visWhites = () => 7 * (S.bigOct || bigOctaves()) + 1;
+const maxBaseIdx = () => pianoWhites.length - visWhites();
+function baseIdx() {
+  let i = pianoWhites.indexOf(S.bigBase);
+  if (i < 0) i = pianoWhites.findIndex((m) => m >= S.bigBase);
+  return Math.max(0, Math.min(maxBaseIdx(), i < 0 ? 0 : i));
+}
+// the lowest and highest keys in the window
+function bigRange() { const i = baseIdx(); return [pianoWhites[i], pianoWhites[i + visWhites() - 1]]; }
+function setBigBase(m) { S.bigBase = pianoWhites[Math.max(0, Math.min(maxBaseIdx(), pianoWhites.indexOf(m) >= 0 ? pianoWhites.indexOf(m) : pianoWhites.findIndex((w) => w >= m)))]; }
+// slide the strip to S.bigBase (smoothly when it moved)
+let stripAt = null;
+function positionStrip(animate = true) {
+  const strip = $('#bigpiano .bp-strip'); if (!strip) return;
+  const i = baseIdx(), moved = stripAt !== null && stripAt !== i;
+  strip.style.transition = animate && moved ? 'transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1)' : 'none';
+  strip.style.transform = `translateX(${(-i * 100) / visWhites()}%)`;
+  stripAt = i;
+}
 function buildBigPiano() {
   const el = $('#bigpiano');
-  const base = S.bigBase, span = 12 * (S.bigOct = bigOctaves());
+  S.bigOct = bigOctaves();
+  setBigBase(S.bigBase);
   let keys = '';
-  const whites = [];
-  for (let m = base; m <= base + span; m++) if (![1, 3, 6, 8, 10].includes(mod(m, 12))) whites.push(m);
-  const ww = 100 / whites.length;
-  whites.forEach((m, k) => {
+  const ww = 100 / visWhites();
+  pianoWhites.forEach((m, k) => {
     const isC = mod(m, 12) === 0, lbl = isC ? 'C' + (Math.floor(m / 12) - 1) : S.settings.keyNames === 'all' ? 'CDEFGAB'[[0, 2, 4, 5, 7, 9, 11].indexOf(mod(m, 12))] : '';
     keys += `<div class="pk w${isC ? ' c' : ''}" data-midi="${m}" style="left:${k * ww}%;width:${ww}%">${lbl}</div>`;
-    if (m + 1 <= base + span && [1, 3, 6, 8, 10].includes(mod(m + 1, 12))) keys += `<div class="pk b" data-midi="${m + 1}" style="left:${(k + 0.66) * ww}%;width:${ww * 0.68}%"></div>`;
+    if (m + 1 <= PIANO_HI && isBlack(m + 1)) keys += `<div class="pk b" data-midi="${m + 1}" style="left:${(k + 0.66) * ww}%;width:${ww * 0.68}%"></div>`;
   });
+  stripAt = null;
   el.innerHTML = `<div class="bp-bar">
     <div class="bp-mode" role="group" aria-label="Piano mode"><button data-bp="edit">Edit</button><button data-bp="draft">Draft</button></div>
-    <button data-bp="down" class="bp-oct" aria-label="Octave down">‹</button><div class="bp-name"></div><button data-bp="up" class="bp-oct" aria-label="Octave up">›</button>
+    <button data-bp="down" class="bp-oct" aria-label="Octave down">‹</button><div class="bp-name" data-bp="name" role="button" aria-label="Play these keys again"></div><button data-bp="up" class="bp-oct" aria-label="Octave up">›</button>
     <button data-bp="strike" aria-label="Play the chord">▶</button>
     <button data-bp="write" class="bp-write" aria-label="Write the chord into the selected slot">Write</button>
     <button data-bp="more" class="bp-more" aria-label="More piano options">⋯</button></div>
@@ -558,7 +574,8 @@ function buildBigPiano() {
       <button data-bp="follow" class="bp-sw"><span>Start from the selection</span><i></i></button>
       <button data-bp="latch" class="bp-sw"><span>Keys stay down (latch)</span><i></i></button>
     </div>
-    <div class="bp-keys">${keys}</div>`;
+    <div class="bp-keys"><div class="bp-strip">${keys}</div></div>`;
+  positionStrip(false);
   updateBigPiano();
 }
 // Chords + Edit: keys latch (tap on, tap again off). Selecting a slot loads its chord onto the keys (an empty
@@ -578,9 +595,9 @@ function noteEdit() {
   if (!nk.dirty && key !== nk.key) {
     nk.notes = e && !e.r ? [midiOf(e.p)] : [];
     // keep the note on the keyboard: move the piano by octaves if it's off either end
-    const n = nk.notes[0], span = 12 * (S.bigOct || bigOctaves());
-    if (n !== undefined && (n < S.bigBase || n > S.bigBase + span)) {
-      S.bigBase = Math.max(24, Math.min(96 - span, 12 * Math.floor(n / 12) - 12));
+    const n = nk.notes[0], [lo, hi] = bigRange();
+    if (n !== undefined && (n < lo || n > hi)) {
+      setBigBase(12 * Math.floor(n / 12) - 12);
       queueMicrotask(buildBigPiano);
     }
   }
@@ -602,21 +619,25 @@ function updateBigPiano() {
   el.querySelector('[data-bp="edit"]').classList.toggle('on', !draft);
   el.querySelector('[data-bp="draft"]').classList.toggle('on', draft);
   el.classList.toggle('draft', draft);
-  // while playing (or paused) the keys show only what's playing; the selection shows again when it stops
-  const playback = !!playingAt;
-  const on = new Set(playback ? [] : draft ? (S.settings.draftLatch ? latchSet().notes : heldNotes()) : bigPianoNotes());
-  const playSeg = playingAt ? segAt(playingAt.m, playingAt.beat) : null;
+  // while playing (or paused) the keys show what's playing; the selection shows again when it stops. Keys you
+  // play yourself show too, and once you play keys while paused they take over until ▶ carries on
+  const mine = !!playingAt && !!S.keysTouched, takeover = mine && !!paused;
+  const playback = !!playingAt && !takeover;
+  const on = new Set(playback && !mine ? [] : draft ? (S.settings.draftLatch ? latchSet().notes : heldNotes()) : bigPianoNotes());
+  const playSeg = playback ? segAt(playingAt.m, playingAt.beat) : null;
   const play = new Set(playSeg && playSeg.chord ? chordKeys(playSeg.chord, S.bigBase) : []);
-  el.classList.toggle('playing', !!playingAt);
+  const mel = takeover ? new Set() : melNow;
+  el.classList.toggle('playing', playback);
   el.querySelectorAll('.pk').forEach((k) => {
     const m = +k.dataset.midi;
-    k.classList.toggle('on', on.has(m)); k.classList.toggle('play', play.has(m)); k.classList.toggle('mel', melNow.has(m));
+    k.classList.toggle('on', on.has(m)); k.classList.toggle('play', play.has(m)); k.classList.toggle('mel', mel.has(m));
   });
   // something sounding beyond the keys: light the octave arrow on that side (orange melody, green chord)
-  const lo = S.bigBase, hi = S.bigBase + 12 * (S.bigOct || bigOctaves());
+  if (!pianoDrag) positionStrip();
+  const [lo, hi] = bigRange();
   for (const [sel, off] of [['[data-bp="down"]', (m) => m < lo], ['[data-bp="up"]', (m) => m > hi]]) {
     const b = el.querySelector(sel);
-    b.classList.toggle('off-mel', [...melNow].some(off));
+    b.classList.toggle('off-mel', [...mel].some(off));
     b.classList.toggle('off-play', !b.classList.contains('off-mel') && [...play].some(off));
   }
   const name = el.querySelector('.bp-name');
@@ -686,6 +707,7 @@ function hearKey(midi) {
   engine.note(S.layer === 'chords' ? S.settings.chordInst : S.settings.melodyInst, midi, t, 0.9, 0.8, S.layer === 'chords' ? 'chord' : 'melody');
 }
 function bigPianoKey(midi) {
+  if (playingAt) S.keysTouched = true;
   if (draftMode()) {                                  // Draft + Latch: nothing is written until Write
     const ls = latchSet(), set = new Set(ls.notes);
     if (set.has(midi)) set.delete(midi); else set.add(midi);
@@ -736,13 +758,18 @@ function bigPianoBar(what) {
     toast(`${chordText(c)} → ${barLabel(S.cs.m)}, ${posLabel(csPos())}`);
     updateBigPiano(); return;
   }
-  if (what === 'strike' && playingAt) {              // playing or paused: hear the chord at the playhead
+  if (what === 'name') {                              // the chord name: play the keys again (named or not)
+    const nm = $('#bigpiano .bp-name'); nm.classList.add('hit'); setTimeout(() => nm.classList.remove('hit'), 160);
+    if (draftMode() && !S.settings.draftLatch) { const h = heldNotes(); if (h.length) strikeChord(h); return; }
+    what = 'strike';
+  }
+  if (what === 'strike' && playingAt && !(paused && S.keysTouched)) {   // playing or paused: hear the chord at the playhead
     const seg = segAt(playingAt.m, playingAt.beat);
     if (seg && seg.chord) strikeChord(chordKeys(seg.chord, S.bigBase), true);
     return;
   }
-  if (playingAt && (what === 'write' || what === 'clear')) return;
-  if (what === 'up' || what === 'down') { S.bigBase = Math.max(24, Math.min(96 - 12 * bigOctaves(), S.bigBase + (what === 'up' ? 12 : -12))); buildBigPiano(); }
+  if (playingAt && !(paused && S.keysTouched) && (what === 'write' || what === 'clear')) return;
+  if (what === 'up' || what === 'down') { setBigBase(S.bigBase + (what === 'up' ? 12 : -12)); updateBigPiano(); return; }
   if (what === 'follow') {
     const k = S.layer === 'chords' ? 'draftFollowChords' : 'draftFollowMelody', on = !followSel();
     S.settings[k] = on; persistSoon();
@@ -764,7 +791,7 @@ function bigPianoBar(what) {
     if (what === 'clear') { ls.notes = []; ls.dirty = !followSel(); strikeChord([]); }
     updateBigPiano(); return;
   }
-  if (S.layer !== 'chords') return;
+  if (S.layer !== 'chords') { if (what === 'strike' && S.layer === 'melody') { const n = noteEdit().notes; if (n.length) strikeChord(n); } return; }
   const ck = chordEdit();
   if (what === 'strike') strikeChord(ck.notes);
   if (what === 'clear') { ck.notes = []; ck.dirty = false; strikeChord([]); }
@@ -1231,6 +1258,7 @@ function divideBeat(arg) {
 // rebuilding the keys; Write puts it in the slot. Otherwise they edit the selected slot.
 const draftChords = () => S.layer === 'chords' && draftMode() && !!S.settings.draftLatch && !$('#bigpiano').hidden;
 function setDraft(d) {
+  if (playingAt) S.keysTouched = true;
   const ls = latchSet(), notes = d ? chordKeys(d, S.bigBase) : [];
   ls.notes = notes; ls.dirty = true;
   S.draftSet = d ? { key: notes.join(), chord: cloneChord(d) } : null;   // keep the spelling as built
@@ -1422,9 +1450,10 @@ let startToken = 0;
 // Pause keeps the place (and the keys lit); ▶ carries on from there. Moving the selection while paused
 // drops the place, so ▶ starts from the selection as usual.
 let paused = null, lastCur = null;
+let pianoDrag = null;                 // the keyboard being slid by a swipe
 const selKey = () => JSON.stringify([S.song.id, S.layer, S.cursor, S.cs, S.bars]);
 function checkPause() {
-  if (paused && paused.selKey !== selKey()) { paused = null; playingAt = null; setMelNow(new Set()); queueMicrotask(renderInfo); }
+  if (paused && paused.selKey !== selKey()) { paused = null; S.keysTouched = false; playingAt = null; setMelNow(new Set()); queueMicrotask(renderInfo); }
 }
 function setMelNow(set) {
   if (set.size === melNow.size && [...set].every((m) => melNow.has(m))) return;
@@ -1436,7 +1465,7 @@ function pausePlay() {
   seq.stop();
   renderOverlay(); renderTransport(); updateBigPiano();
 }
-function stopPlay() { paused = null; seq.stop(); playingAt = null; setMelNow(new Set()); renderOverlay(); renderTransport(); updateBigPiano(); }
+function stopPlay() { paused = null; S.keysTouched = false; seq.stop(); playingAt = null; setMelNow(new Set()); renderOverlay(); renderTransport(); updateBigPiano(); }
 async function togglePlay() {
   engine.unlock();
   if (startToken) { startToken = 0; renderTransport(); return; }
@@ -1445,7 +1474,7 @@ async function togglePlay() {
   const r = playRange();
   const resume = !!(paused && paused.selKey === selKey() && paused.range.order.join() === r.order.join());
   const from = resume ? paused.idx : r.from, meta = resume ? paused.range.meta : r.meta;
-  paused = null;
+  paused = null; S.keysTouched = false;
   const token = startToken = Date.now();
   $('#btn-play').textContent = '…';
   await instrumentsReady();
@@ -1515,7 +1544,7 @@ function renderTransport() {
   const mc = $('#mel-chip');
   if (mc) { mc.hidden = !!S.song.chartOnly; mc.classList.toggle('on', !!s.playMelody); mc.querySelector('.mc-sub').textContent = s.playMelody ? 'on' : 'off'; }
   const sw = $('#swing-chip');
-  if (sw) { sw.classList.toggle('on', !!s.swingOn); sw.querySelector('.sw-main').textContent = s.swingOn ? 'Swing' : 'Straight'; }
+  if (sw) { sw.classList.toggle('on', !!s.swingOn); sw.querySelector('.sw-main').dataset.on = s.swingOn ? 'swing' : 'straight'; }
   $('#bpm-val').textContent = S.song.tempo || 120;
 }
 function setTempo(t) { S.song.tempo = Math.max(30, Math.min(320, Math.round(t) || 120)); renderTransport(); persistSoon(); }
@@ -1914,10 +1943,7 @@ function bindGlobal() {
   });
   let rt = null;
   window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { applySplit(); render(); }, 150); });
-  try { if (navigator.devicePosture) navigator.devicePosture.addEventListener('change', () => { applySplit(); render(); setTimeout(healViewport, 400); }); } catch (e) { /* none */ }
-  setTimeout(healViewport, 600);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(healViewport, 300); });
-  document.addEventListener('focusout', (e) => { if (e.target.matches && e.target.matches('input, textarea')) setTimeout(healViewport, 140); });
+  try { if (navigator.devicePosture) navigator.devicePosture.addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
   // fold changes (iPhone Duo): posture and segment changes also re-lay the page out
   try { if (navigator.devicePosture) navigator.devicePosture.addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
   try { matchMedia('(vertical-viewport-segments: 2)').addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
@@ -1926,22 +1952,56 @@ function bindGlobal() {
     const menu = $('#bigpiano .bp-menu');
     if (menu && !menu.hidden && !e.target.closest('.bp-menu, [data-bp="more"]')) menu.hidden = true;
   }, true);
+  // the keys: a tap plays (or toggles) a key; a sideways swipe slides the keyboard along, and it settles
+  // on the nearest white key. Keys that sound while held start at once and stop if the touch turns into a swipe
+  const touches = new Map();
   bp.addEventListener('pointerdown', (e) => {
     const b = e.target.closest('[data-bp]');
     if (b) { e.preventDefault(); if (!b.disabled) bigPianoBar(b.dataset.bp); return; }
     const k = e.target.closest('.pk'); if (!k) return;
     e.preventDefault(); engine.unlock();
-    if (draftMode() && !S.settings.draftLatch) { try { bp.setPointerCapture(e.pointerId); } catch (err) { /* fine */ } draftDown(e, k); return; }
-    k.classList.add('down'); setTimeout(() => k.classList.remove('down'), 140);
-    bigPianoKey(+k.dataset.midi);
+    try { bp.setPointerCapture(e.pointerId); } catch (err) { /* fine */ }
+    const held = draftMode() && !S.settings.draftLatch;
+    touches.set(e.pointerId, { k, x0: e.clientX, y0: e.clientY, held, pan: false, xs: [[e.clientX, performance.now()]] });
+    if (held) draftDown(e, k); else k.classList.add('down');
   });
   bp.addEventListener('pointermove', (e) => {
-    const x = S.held.get(e.pointerId); if (!x) return;
-    const under = document.elementFromPoint(e.clientX, e.clientY);
-    const k = under && under.closest && under.closest('#bigpiano .pk');
-    if (k && k !== x.k) { draftUp(e.pointerId); draftDown(e, k); }
+    const g = touches.get(e.pointerId); if (!g) return;
+    const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
+    g.xs.push([e.clientX, performance.now()]); if (g.xs.length > 6) g.xs.shift();
+    if (!g.pan) {
+      if (touches.size > 1 || Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy)) return;
+      g.pan = true; g.k.classList.remove('down');
+      if (g.held) draftUp(e.pointerId);
+      const keys = $('#bigpiano .bp-keys');
+      pianoDrag = { w: keys.clientWidth / visWhites(), off0: baseIdx() * (keys.clientWidth / visWhites()) };
+      g.x0 = e.clientX;
+    }
+    const d = pianoDrag, max = maxBaseIdx() * d.w;
+    let off = d.off0 - (e.clientX - g.x0);
+    if (off < 0) off /= 3; else if (off > max) off = max + (off - max) / 3;   // a little give at the ends
+    d.off = off;
+    const strip = $('#bigpiano .bp-strip');
+    strip.style.transition = 'none'; strip.style.transform = `translateX(${-off}px)`;
   });
-  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) bp.addEventListener(ev, (e) => draftUp(e.pointerId));
+  const lift = (e) => {
+    const g = touches.get(e.pointerId); if (!g) return;
+    touches.delete(e.pointerId);
+    if (g.pan) {
+      // carry a flick on a little, then settle on the nearest white key
+      const now = performance.now(), recent = g.xs.filter(([, at]) => now - at < 100);   // a finger that stopped before lifting doesn't fling
+      const d = pianoDrag, a = recent[0], b = recent[recent.length - 1], v = recent.length > 1 && b[1] > a[1] ? (b[0] - a[0]) / (b[1] - a[1]) : 0;
+      const off = (d.off != null ? d.off : d.off0) - v * 160;
+      pianoDrag = null;
+      setBigBase(pianoWhites[Math.max(0, Math.min(maxBaseIdx(), Math.round(off / d.w)))]);
+      stripAt = -1; updateBigPiano();
+      return;
+    }
+    if (g.held) { draftUp(e.pointerId); return; }
+    g.k.classList.remove('down');
+    if (e.type === 'pointerup') bigPianoKey(+g.k.dataset.midi);
+  };
+  for (const ev of ['pointerup', 'pointercancel']) bp.addEventListener(ev, lift);
   const flush = () => { if (persistTimer) persist(); store.flushNow(); };
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });

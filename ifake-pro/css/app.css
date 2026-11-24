@@ -367,7 +367,7 @@ body.split #bigpiano { grid-area: piano; display: flex; }
 #bigpiano .bp-bar button { height: 40px; min-width: 44px; border-radius: 9px; background: var(--key-alt); color: var(--key-text); font-size: 16px; padding: 0 10px; }
 #bigpiano .bp-bar .bp-oct { font-size: 22px; min-width: 44px; padding: 0; }
 #bigpiano .bp-bar .bp-more { font-size: 20px; }
-#bigpiano .bp-name { flex: 1; min-width: 0; background: none !important; text-align: center; font: 600 20px var(--chord-font); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#bigpiano .bp-name { cursor: pointer; border-radius: 9px; transition: background-color 0.15s; flex: 1; min-width: 0; background: none !important; text-align: center; font: 600 20px var(--chord-font); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #bigpiano .bp-mode { display: flex; background: var(--key-alt); border-radius: 10px; padding: 2px; gap: 2px; height: 40px; box-sizing: border-box; }
 #bigpiano .bp-mode button { height: 36px; min-width: 58px; background: none; color: #c7c7cc; font-size: 15px; border-radius: 8px; }
 #bigpiano .bp-mode button.on { background: #e5e5ea; color: #1c1c1e; font-weight: 600; }
@@ -375,7 +375,8 @@ body.split #bigpiano { grid-area: piano; display: flex; }
 #bigpiano .bp-bar button:not(.bp-name):disabled { opacity: 0.4; }
 #bigpiano .bp-write.ready { background: #0a84ff; color: #fff; font-weight: 600; }
 #bigpiano .bp-name.none { color: #8e8e93; font: 14px var(--ui-font); }
-#bigpiano .bp-keys { position: relative; flex: 1; min-height: 0; touch-action: none; }
+#bigpiano .bp-keys { position: relative; flex: 1; min-height: 0; touch-action: none; overflow: hidden; }
+#bigpiano .bp-strip { position: absolute; inset: 0; will-change: transform; }
 #bigpiano .pk { position: absolute; top: 0; box-sizing: border-box; border-radius: 0 0 6px 6px; }
 #bigpiano .pk.w { height: 100%; background: #f4f1ea; border: 1px solid #1c1c1e; color: #8e8e93; font: 11px var(--ui-font);
   display: flex; align-items: flex-end; justify-content: center; padding-bottom: 5px; }
@@ -421,7 +422,6 @@ body.split #swing-chip { height: 42px; }
 /* the melody on the piano keys while playing (chords stay green) */
 #bigpiano .pk.pk.mel.w, #piano-strip .pk.pk.mel.w { background: #ffb340; color: #fff; }
 #bigpiano .pk.pk.mel.b, #piano-strip .pk.pk.mel.b { background: #ff9f0a; }
-#bigpiano .pk.pk.mel.play { box-shadow: inset 0 -10px 0 #30b07f; }
 /* narrow phones: make room for the swing toggle */
 @media (max-width: 430px) {
   #transport { gap: 5px; }
@@ -454,7 +454,6 @@ body.split #mel-chip { height: 42px; }
 #bigpiano.playing .pk.play.b, #bigpiano.playing .pk.play.on.b { background: #1f8f3f; }
 #bigpiano.playing .pk.pk.mel.w { background: #ff9f0a; color: #fff; }
 #bigpiano.playing .pk.pk.mel.b { background: #ff9f0a; }
-#bigpiano.playing .pk.pk.mel.play { box-shadow: inset 0 -12px 0 #1f8f3f; }
 #foldline .fl-reset { background: #3a3a3c; color: #f2f2f7; margin-right: 6px; }
 .row-sub { display: block; font-size: 12px; color: #6e6e73; font-weight: 400; }
 
@@ -507,9 +506,10 @@ label.btn.file { display: inline-flex; align-items: center; cursor: pointer; }
 body.split .sheet { align-items: flex-start; }
 body.split .sheet-card { max-height: calc(var(--seg0) - 8px); margin-top: env(safe-area-inset-top); border-radius: 0 0 14px 14px; }
 
-/* split view fills the drawable page (--app-h, set in applySplit); if iOS has shrunk a Home Screen app's page
-   the strip below can't be drawn into, so nothing is put there (the app re-measures the page to win it back) */
-body.split #app { position: fixed; top: 0; left: 0; right: 0; bottom: auto; height: var(--app-h, 100dvh); }
+/* split view fills the whole screen (--app-h, set in applySplit). Not position: fixed — in a Home Screen app iOS
+   stops fixed things a status bar short of the bottom; the page itself never scrolls */
+html.split, html.split body { overflow: hidden; }
+body.split #app { position: absolute; top: 0; left: 0; right: 0; bottom: auto; height: var(--app-h, 100dvh); }
 /* the Duo's tall status-bar band: iOS keeps taps there for itself, so only the song title sits in it
    (left of the status icons); ☰ goes left of the tabs, Even and ⚙ to their right */
 body.split.head-up #app { padding-top: 0;
@@ -532,3 +532,10 @@ body.split.head-up #tabs { margin: 3px 4px 0; }
 /* notes sounding beyond the keyboard: that side's arrow lights up */
 #bigpiano .bp-bar button.off-mel { background: #ff9f0a; color: #fff; }
 #bigpiano .bp-bar button.off-play { background: #34c759; color: #fff; }
+
+/* Swing / Straight: both words take the same space, so the button doesn't change width */
+#swing-chip .sw-main { display: grid; }
+#swing-chip .sw-main > span { grid-area: 1 / 1; }
+#swing-chip .sw-main[data-on="swing"] .sw-straight, #swing-chip .sw-main[data-on="straight"] .sw-swing { visibility: hidden; }
+/* tapping the chord name plays it again */
+#bigpiano .bp-name.hit { background: rgba(255, 255, 255, 0.12) !important; transition: none; }
