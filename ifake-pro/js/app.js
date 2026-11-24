@@ -11,7 +11,7 @@ import {
   TPQ, beatTicks, positions, evTicks, enter, toRest, normCursor, eventAt, midiOf, spellMidi, respell, pitchName,
   playableNotes, parseMelody, setMelody, melodyText, emptyMeasure, restsFor, cloneEv, keyAccidental, KEY_NAMES,
 } from './melody.js';
-import { nameChord, chordKeys } from './recognise.js';
+import { nameChord, chordKeys, nameTable } from './recognise.js';
 import { layoutGrid } from './grid.js';
 import { newSong, songFromText, songToText, serialiseSong, deserialiseSong, cellMap, playOrder, parseChordBars, barNumber,
   hasChords, slotList, beatGrid, getSlot, setSlot, setDivision, copyChords, mapChords, fillChords } from './song.js';
@@ -2014,6 +2014,7 @@ async function boot() {
   bindPanel(); bindScore(); bindTransport(); bindGlobal();
   renderAll();
   if (!store.localOk) { warnedUnsaved = true; toast("This browser isn't saving — use Songs → Export"); }
+  setTimeout(() => { try { nameTable(); } catch (e) { /* built on first use instead */ } }, 1200);   // chord names, ready before the first keys
   try { engine.ensureContext(); } catch (e) { /* no Web Audio */ }
   applyAudioSettings();
   await engine.loadIndex();
