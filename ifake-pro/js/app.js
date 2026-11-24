@@ -26,7 +26,7 @@ const mod = (a, n) => ((a % n) + n) % n;
 const DEFAULT_SETTINGS = {
   loop: true, melodyInst: 'altosax', chordInst: 'piano', bassInst: 'upbass', compPattern: 'block', bassPattern: 'off',
   voicing: 'smooth', swing: 0, swingOn: true, swingAmt: 0.8, click: false, countIn: 0, reverb: 0.15,
-  volMelody: 0.9, volChord: 0.65, volBass: 0.8, volClick: 0.5, audition: true, playMelody: true, playChords: true, scoreBars: 'auto', gridBars: 4, evenChords: false, split: 'auto', foldAdjust: 0, pianoMode: 'draft', draftLatch: true, draftFollowChords: true, draftFollowMelody: false,
+  volMelody: 0.9, volChord: 0.65, volBass: 0.8, volClick: 0.5, audition: true, playMelody: true, playChords: true, scoreBars: 'auto', gridBars: 4, evenChords: false, split: 'auto', foldAdjust: 0, pianoMode: 'draft', draftLatchChords: true, draftLatchMelody: false, draftFollowChords: true, draftFollowMelody: false,
 };
 
 // ---------------------------------------------------------------- state
@@ -589,6 +589,8 @@ function chordEdit() {
 // Draft + Latch can start from the selection: the selected chord's keys (Chords tab, on by default) or the
 // selected note (Melody tab, off by default); Follow in the piano bar switches it per tab. Not following,
 // the keys are a free sketchpad. Keys you change stay as they are until Write or Clear.
+// Latch (keys stay down until tapped again) is set per tab: on for chords, off for melody
+const latchOn = () => (S.layer === 'melody' ? !!S.settings.draftLatchMelody : S.settings.draftLatchChords !== false);
 const followSel = () => (S.layer === 'chords' ? S.settings.draftFollowChords !== false : S.layer === 'melody' ? !!S.settings.draftFollowMelody : false);
 function noteEdit() {
   const nk = S.nk, e = selEv(), key = S.sel ? `${S.sel.m}:${S.sel.i}:${e && !e.r ? midiOf(e.p) : 'r'}` : '';
@@ -623,7 +625,7 @@ function updateBigPiano() {
   // play yourself show too, and once you play keys while paused they take over until ▶ carries on
   const mine = !!playingAt && !!S.keysTouched, takeover = mine && !!paused;
   const playback = !!playingAt && !takeover;
-  const on = new Set(playback && !mine ? [] : draft ? (S.settings.draftLatch ? latchSet().notes : heldNotes()) : bigPianoNotes());
+  const on = new Set(playback && !mine ? [] : draft ? (latchOn() ? latchSet().notes : heldNotes()) : bigPianoNotes());
   const playSeg = playback ? segAt(playingAt.m, playingAt.beat) : null;
   const play = new Set(playSeg && playSeg.chord ? chordKeys(playSeg.chord, S.bigBase) : []);
   const mel = takeover ? new Set() : melNow;
@@ -637,21 +639,22 @@ function updateBigPiano() {
   const [lo, hi] = bigRange();
   for (const [sel, off] of [['[data-bp="down"]', (m) => m < lo], ['[data-bp="up"]', (m) => m > hi]]) {
     const b = el.querySelector(sel);
-    b.classList.toggle('off-mel', [...mel].some(off));
-    b.classList.toggle('off-play', !b.classList.contains('off-mel') && [...play].some(off));
+    const m = [...mel].some(off), pl = !m && [...play].some(off);
+    b.classList.toggle('off-mel', m); b.classList.toggle('off-play', pl);
+    b.classList.toggle('off-on', !m && !pl && [...on].some(off));
   }
   const name = el.querySelector('.bp-name');
   const latchBtn = el.querySelector('[data-bp="latch"]');
-  latchBtn.hidden = !draft; latchBtn.classList.toggle('on', !!S.settings.draftLatch);
+  latchBtn.hidden = !draft; latchBtn.classList.toggle('on', latchOn());
   const followBtn = el.querySelector('[data-bp="follow"]');
-  followBtn.hidden = !(draft && S.settings.draftLatch && (S.layer === 'chords' || S.layer === 'melody'));
+  followBtn.hidden = !(draft && latchOn() && (S.layer === 'chords' || S.layer === 'melody'));
   followBtn.classList.toggle('on', followSel());
   followBtn.querySelector('span').textContent = S.layer === 'chords' ? 'Start from the selected chord' : 'Start from the selected note';
   queueMicrotask(() => { el.querySelector('[data-bp="more"]').hidden = ![...el.querySelectorAll('.bp-menu button')].some((b) => !b.hidden); });
   if (draft) {
     // draft: just playing — keys latch (tap on/off) or sound while held, and the chord is named. Nothing
     // goes into the song unless you tap Write (Chords tab): then it goes into the selected slot
-    const latch = !!S.settings.draftLatch, down = latch ? latchSet().notes : heldNotes();
+    const latch = latchOn(), down = latch ? latchSet().notes : heldNotes();
     const built = S.draftSet && S.draftSet.key === down.join() ? S.draftSet.chord : null;
     const c = built || (down.length > 1 ? nameChord(down, S.song.key.fifths) : null), own = csChord();
     S.draftChord = c;
@@ -754,13 +757,13 @@ function bigPianoBar(what) {
     if (!S.draftChord || S.layer !== 'chords') return;
     const c = cloneChord(S.draftChord);
     edit(() => { setSlot(csMeas(), S.cs.beat, S.cs.k || 0, c); });
-    if (S.settings.draftLatch) { const ck = chordEdit(); ck.dirty = false; ck.text = chordText(c); }
+    if (latchOn()) { const ck = chordEdit(); ck.dirty = false; ck.text = chordText(c); }
     toast(`${chordText(c)} → ${barLabel(S.cs.m)}, ${posLabel(csPos())}`);
     updateBigPiano(); return;
   }
   if (what === 'name') {                              // the chord name: play the keys again (named or not)
     const nm = $('#bigpiano .bp-name'); nm.classList.add('hit'); setTimeout(() => nm.classList.remove('hit'), 160);
-    if (draftMode() && !S.settings.draftLatch) { const h = heldNotes(); if (h.length) strikeChord(h); return; }
+    if (draftMode() && !latchOn()) { const h = heldNotes(); if (h.length) strikeChord(h); return; }
     what = 'strike';
   }
   if (what === 'strike' && playingAt && !(paused && S.keysTouched)) {   // playing or paused: hear the chord at the playhead
@@ -779,9 +782,10 @@ function bigPianoBar(what) {
     updateBigPiano(); return;
   }
   if (what === 'latch') {
-    S.settings.draftLatch = !S.settings.draftLatch; persistSoon();
+    const lk = S.layer === 'melody' ? 'draftLatchMelody' : 'draftLatchChords';
+    S.settings[lk] = !latchOn(); persistSoon();
     for (const id of [...S.held.keys()]) draftUp(id);
-    toast(S.settings.draftLatch ? 'Latch: keys stay down until tapped again' : 'Keys play while held');
+    toast(latchOn() ? 'Latch: keys stay down until tapped again' : 'Keys play while held');
     updateBigPiano(); updatePanel(); return;
   }
   if (draftMode()) {
@@ -1256,7 +1260,7 @@ function divideBeat(arg) {
 }
 // Draft (latched keys, Chords tab, piano showing): the chord keys show the drafted chord and change it,
 // rebuilding the keys; Write puts it in the slot. Otherwise they edit the selected slot.
-const draftChords = () => S.layer === 'chords' && draftMode() && !!S.settings.draftLatch && !$('#bigpiano').hidden;
+const draftChords = () => S.layer === 'chords' && draftMode() && latchOn() && !$('#bigpiano').hidden;
 function setDraft(d) {
   if (playingAt) S.keysTouched = true;
   const ls = latchSet(), notes = d ? chordKeys(d, S.bigBase) : [];
@@ -1961,7 +1965,7 @@ function bindGlobal() {
     const k = e.target.closest('.pk'); if (!k) return;
     e.preventDefault(); engine.unlock();
     try { bp.setPointerCapture(e.pointerId); } catch (err) { /* fine */ }
-    const held = draftMode() && !S.settings.draftLatch;
+    const held = draftMode() && !latchOn();
     touches.set(e.pointerId, { k, x0: e.clientX, y0: e.clientY, held, pan: false, xs: [[e.clientX, performance.now()]] });
     if (held) draftDown(e, k); else k.classList.add('down');
   });

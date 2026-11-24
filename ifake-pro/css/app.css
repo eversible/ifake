@@ -532,6 +532,7 @@ body.split.head-up #tabs { margin: 3px 4px 0; }
 /* notes sounding beyond the keyboard: that side's arrow lights up */
 #bigpiano .bp-bar button.off-mel { background: #ff9f0a; color: #fff; }
 #bigpiano .bp-bar button.off-play { background: #34c759; color: #fff; }
+#bigpiano .bp-bar button.off-on { background: #3d8bfd; color: #fff; }
 
 /* Swing / Straight: both words take the same space, so the button doesn't change width */
 #swing-chip .sw-main { display: grid; }
