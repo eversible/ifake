@@ -540,3 +540,14 @@ body.split.head-up #tabs { margin: 3px 4px 0; }
 #swing-chip .sw-main[data-on="swing"] .sw-straight, #swing-chip .sw-main[data-on="straight"] .sw-swing { visibility: hidden; }
 /* tapping the chord name plays it again */
 #bigpiano .bp-name.hit { background: rgba(255, 255, 255, 0.12) !important; transition: none; }
+
+/* repeat signs (%, half-bar, two-bar) in the chords grid and on the Bars keys */
+#chordgrid .cell .sim { position: absolute; left: 2px; top: 0; bottom: 0; z-index: 1; display: flex; align-items: center; justify-content: center; pointer-events: none; color: #1d1b16; }
+#chordgrid .cell .sim svg { height: 52%; max-height: 34px; width: auto; fill: currentColor; overflow: visible; }
+#chordgrid .cell .sim-half svg { height: 42%; max-height: 27px; }
+#chordgrid .cell .sim-two svg { height: 66%; max-height: 44px; }
+.krow.k11 { grid-template-columns: repeat(11, minmax(0, 1fr)); }
+#panel .key svg { fill: currentColor; }
+#panel .key[data-action="sim"] svg { height: 20px; width: auto; vertical-align: middle; }
+#panel .key[data-action="sim"][data-arg="two"] svg { height: 25px; }
+#panel .key .half { font-size: 14px; margin-right: 3px; vertical-align: middle; }

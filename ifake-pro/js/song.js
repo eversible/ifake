@@ -149,6 +149,80 @@ export function playOrder(song, lo = null, hi = null) {
   return order;
 }
 
+// ---------- repeat signs (simile, "%") ----------
+// marks[m].sim: 'bar' = bar m plays the bar before; 'half' = its second half plays its first half; 'two' = bars
+// m and m+1 play the two bars before. Chords under a sign aren't kept (writing one there takes the sign off).
+export function simFits(song, m, sim) {
+  const M = song.measures, full = barTicks(song);
+  if (!M[m]) return false;
+  if (sim === 'half') return M[m].len === full && song.time.num % 2 === 0;
+  if (sim === 'two') return m >= 2 && m + 1 < M.length && [m - 2, m - 1, m, m + 1].every((k) => M[k].len === full);
+  return m >= 1 && M[m - 1].len === M[m].len;
+}
+// the bars and beats a sign covers: [{ m, from }] (from = first beat covered)
+export function simCover(song, m, sim) {
+  if (sim === 'half') return [{ m, from: song.time.num / 2 }];
+  return sim === 'two' ? [{ m, from: 0 }, { m: m + 1, from: 0 }] : [{ m, from: 0 }];
+}
+// empty the beats under a sign (chords, and beat divisions there)
+export function clearUnderSim(song, m, sim) {
+  for (const { m: k, from } of simCover(song, m, sim)) {
+    const meas = song.measures[k];
+    for (let b = from; b < meas.ch.length; b++) {
+      meas.ch[b] = null;
+      if (meas.div) delete meas.div[b];
+      if (meas.sub) delete meas.sub[b];
+    }
+    if (from > 0 && meas.div && meas.div[from - 1] === 't') delete meas.div[from - 1];   // a triplet across the middle
+    if (meas.div && !Object.keys(meas.div).length) delete meas.div;
+    if (meas.sub && !Object.keys(meas.sub).length) delete meas.sub;
+  }
+}
+// after an edit: a sign goes when a chord is written under it or it no longer fits
+export function tidySims(song) {
+  const marks = song.marks || {};
+  for (const k of Object.keys(marks).map(Number).sort((a, b) => a - b)) {
+    const mk = marks[k]; if (!mk || !mk.sim) continue;
+    const chordUnder = () => simCover(song, k, mk.sim).some(({ m, from }) => slotList(song.measures[m]).some((x) => x.chord && x.pos >= from - 1e-9));
+    if (!simFits(song, k, mk.sim) || chordUnder()) { delete mk.sim; continue; }
+    if (mk.sim === 'two' && marks[k + 1]) delete marks[k + 1].sim;        // the second bar belongs to this sign
+  }
+  for (const [k, v] of Object.entries(marks)) if (!Object.keys(v).some((x) => v[x])) delete marks[k];
+}
+// the chord layer as played: under each sign, the chords of the beats just before it (a sign that starts
+// while a chord is held on restrikes that chord)
+export function playedMeasures(song) {
+  const out = song.measures.map((meas) => ({
+    len: meas.len, ch: meas.ch.slice(), div: meas.div ? { ...meas.div } : undefined,
+    sub: meas.sub ? Object.fromEntries(Object.entries(meas.sub).map(([b, a]) => [b, a.slice()])) : undefined,
+  }));
+  const copyBeats = (dst, src, dFrom, sFrom, n) => {
+    for (let j = 0; j < n; j++) {
+      const d = dFrom + j, s = sFrom + j;
+      dst.ch[d] = src.ch[s] || null;
+      if (src.div && src.div[s] !== undefined) (dst.div = dst.div || {})[d] = src.div[s]; else if (dst.div) delete dst.div[d];
+      if (src.sub && src.sub[s]) (dst.sub = dst.sub || {})[d] = src.sub[s].slice(); else if (dst.sub) delete dst.sub[d];
+    }
+  };
+  const soundingAt = (m, pos) => {
+    for (let k = m; k >= 0; k--) {
+      const sl = slotList(out[k]).filter((x) => x.chord && (k < m || x.pos <= pos + 1e-9));
+      if (sl.length) return sl[sl.length - 1].chord;
+    }
+    return null;
+  };
+  out.forEach((meas, m) => {
+    const sim = ((song.marks || {})[m] || {}).sim;
+    if (!sim || !simFits(song, m, sim)) return;
+    const n = meas.ch.length;
+    if (sim === 'half') { const h = n / 2; copyBeats(meas, meas, h, 0, h); if (!meas.ch[h]) meas.ch[h] = soundingAt(m, 0); return; }
+    const back = sim === 'two' ? 2 : 1;
+    for (let j = 0; j < back; j++) copyBeats(out[m + j], out[m - back + j], 0, 0, n);
+    if (!meas.ch[0]) meas.ch[0] = soundingAt(m - back, 0);
+  });
+  return out;
+}
+
 // ---------- text format ----------
 const cellText = (c) => (c ? chordText(c).replace(/,\s+/g, ',') : '.');
 export function barChordText(meas) {
@@ -170,7 +244,11 @@ export function songToText(song) {
   let line = '', closed = false;
   song.measures.forEach((meas, m) => {
     const mk = song.marks[m] || {};
-    line += (mk.start ? '{ ' : closed ? '' : '| ') + (mk.ending ? `N${mk.ending} ` : '') + barChordText(meas) + ' ';
+    const under = ((song.marks[m - 1] || {}).sim === 'two'), n = meas.ch.length;
+    const body = mk.sim === 'bar' ? '%' : mk.sim === 'two' ? '%%' : under ? new Array(n).fill('.').join(' ')
+      : mk.sim === 'half' ? [barChordText({ ...meas, ch: meas.ch.slice(0, n / 2) }), '%', ...new Array(n / 2 - 1).fill('.')].filter(Boolean).join(' ')
+      : barChordText(meas);
+    line += (mk.start ? '{ ' : closed ? '' : '| ') + (mk.ending ? `N${mk.ending} ` : '') + body + ' ';
     closed = !!mk.end;
     if (mk.end) line += (mk.end > 2 ? `}x${mk.end}` : '}') + ' ';
     const lineBreak = (m + 1 - (song.pickup ? 1 : 0)) % 4 === 0;
@@ -226,10 +304,11 @@ export function parseChordBars(text) {
     if ((m = /^\}(?:x(\d+))?$/.exec(t))) { if (cur) { cur.mark.end = m[1] ? +m[1] : 2; close(); } continue; }
     if ((m = /^N([1-3])$/.exec(t))) { open(); cur.mark.ending = +m[1]; continue; }
     open();
+    if (t === '%' || t === '%%') { cur.mark.sim = t === '%%' ? 'two' : cur.cells.length ? 'half' : 'bar'; if (cur.mark.sim === 'half') cur.cells.push(null); continue; }
     cur.cells.push(t === '.' ? null : parseChord(t));
   }
   close();
-  return bars.filter((b) => b.cells.length || b.mark.start || b.mark.end || b.mark.ending);
+  return bars.filter((b) => b.cells.length || b.mark.start || b.mark.end || b.mark.ending || b.mark.sim);
 }
 
 export function songFromText(text) {

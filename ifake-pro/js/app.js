@@ -14,7 +14,8 @@ import {
 import { nameChord, chordKeys, nameTable } from './recognise.js';
 import { layoutGrid } from './grid.js';
 import { newSong, songFromText, songToText, serialiseSong, deserialiseSong, cellMap, playOrder, parseChordBars, barNumber,
-  hasChords, slotList, beatGrid, getSlot, setSlot, setDivision, copyChords, mapChords, fillChords } from './song.js';
+  hasChords, slotList, beatGrid, getSlot, setSlot, setDivision, copyChords, mapChords, fillChords,
+  simFits, simCover, clearUnderSim, tidySims, playedMeasures } from './song.js';
 import { renderScore, hitTest } from './score.js';
 import { DEMO_SONG_TEXT } from './demo.js';
 
@@ -194,6 +195,7 @@ function edit(fn, opts = {}) {
     const id = S.song.id; S.song = deserialiseSong(JSON.parse(before)); S.song.id = id; clampSelection(); invalidate(); throw e;
   }
   if (r === false) return;
+  tidySims(S.song);
   S.undo.push(before); if (S.undo.length > 200) S.undo.shift(); S.redo = [];
   afterEdit(opts);
 }
@@ -240,7 +242,7 @@ function timeline() {
   const song = S.song, cm = cellMap(song), n = cm.total;
   // chord changes in time order; one that falls inside a beat goes in mid[cell] (off = fraction of the beat)
   const events = [];
-  song.measures.forEach((meas, m) => slotList(meas).forEach((x) => {
+  playedMeasures(song).forEach((meas, m) => slotList(meas).forEach((x) => {
     if (!x.chord) return;
     const beat = Math.floor(x.pos + 1e-9);
     events.push({ cell: cm.start[m] + beat, off: x.pos - beat, chord: x.chord });
@@ -843,6 +845,11 @@ function updateHeader() {
   const mt = $('#tabs [data-layer="melody"]');
   if (mt) mt.hidden = chart;
 }
+const SIM_SVG = {
+  one: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7.5" r="2.4"/><circle cx="18" cy="16.5" r="2.4"/><path d="M4 21h3.6L20 3h-3.6z"/></svg>',
+  two: '<svg viewBox="0 0 36 30" aria-hidden="true"><text x="18" y="8" text-anchor="middle" font-size="9" font-weight="700">2</text><circle cx="5.5" cy="15" r="2.4"/><circle cx="30.5" cy="26" r="2.4"/><path d="M4 30h3.4l10.4-18h-3.4zM15.4 30h3.4l10.4-18h-3.4z"/></svg>',
+};
+const SIM_NAMES = { bar: 'Repeat the bar before', half: 'Repeat the first half of the bar', two: 'Repeat the two bars before' };
 function renderChordGrid() {
   const g = $('#chordgrid'), L = S.layout, on = (S.layer === 'chords' || S.view === 'grid') && !!L;
   $('#score-wrap').classList.toggle('chords-mode', on);
@@ -850,6 +857,18 @@ function renderChordGrid() {
   const song = S.song, cells = gridCells(L), bpb = song.time.num;
   g.style.height = L.height + 'px';
   let h = '';
+  // repeat signs: by the cell they start in, with the width they cover (to the end of their bars on that line)
+  const signs = new Map();
+  for (const [k, mk] of Object.entries(song.marks || {})) {
+    if (!mk.sim || !simFits(song, +k, mk.sim)) continue;
+    const cov = simCover(song, +k, mk.sim);
+    const startIdx = cells.findIndex((c) => c.m === +k && c.pos >= cov[0].from - 1e-9);
+    if (startIdx < 0) continue;
+    const c0 = cells[startIdx];
+    let endIdx = startIdx;
+    for (let j = startIdx; j < cells.length && cells[j].line === c0.line && cov.some((v) => v.m === cells[j].m); j++) endIdx = j;
+    signs.set(startIdx, { kind: mk.sim, w: cells[endIdx].x + cells[endIdx].w - c0.x });
+  }
   cells.forEach((c, k) => {
     const mk = song.marks[c.m] || {}, prev = cells[k - 1], next = cells[k + 1];
     const lineStart = !prev || prev.line !== c.line, lineEnd = !next || next.line !== c.line;
@@ -879,10 +898,12 @@ function renderChordGrid() {
     if (chord) {
       // the symbol may run on over the empty cells after it (up to two bars, same line)
       let j = k + 1;
-      while (j < cells.length && cells[j].pos + (cells[j].m - c.m) * bpb - c.pos < 2 * bpb && cells[j].line === c.line && !getSlot(song.measures[cells[j].m], cells[j].b, cells[j].k)) j++;
+      while (j < cells.length && cells[j].pos + (cells[j].m - c.m) * bpb - c.pos < 2 * bpb && cells[j].line === c.line && !getSlot(song.measures[cells[j].m], cells[j].b, cells[j].k) && !signs.has(j)) j++;
       const right = cells[j - 1].x + cells[j - 1].w;
       inner += `<span class="ch${chord.nc ? ' nc' : ''}" style="width:${Math.max(10, right - c.x - (mk.start && c.b === 0 ? 14 : 8))}px">${chordHTML(chord)}</span>`;
     }
+    const sg = signs.get(k);
+    if (sg) inner += `<span class="sim sim-${sg.kind}" style="width:${sg.w - 4}px" title="${SIM_NAMES[sg.kind]}">${sg.kind === 'two' ? SIM_SVG.two : SIM_SVG.one}</span>`;
     h += `<div class="${cls.join(' ')}" data-m="${c.m}" data-b="${c.b}" data-k="${c.k}" style="left:${c.x}px;top:${c.y}px;width:${c.w}px;height:${c.h}px">${inner}</div>`;
   });
   g.innerHTML = h;
@@ -1025,8 +1046,9 @@ const PANELS = {
   ],
   bars: [
     [['|:', 'rstart', 'Repeat start'], [':|', 'rend', 'Repeat end'], ['×2', 'rtimes', 'Times to play'], ['1.', 'ending', '1st ending', 1], ['2.', 'ending', '2nd ending', 2],
-      ['3.', 'ending', '3rd ending', 3], ['+bar', 'insbar', 'Add a bar after'], ['−bar', 'delbar', 'Delete bars'], ['Dup', 'dupbar', 'Duplicate bars'], ['%', 'prevbar', 'Copy the previous bar here']],
-    [['All', 'whole', 'Whole song'], ['Pickup', 'pickup', 'Pickup bar on/off'], ['Key ♭', 'key', 'One flat more', -1], ['Key ♯', 'key', 'One sharp more', 1],
+      ['3.', 'ending', '3rd ending', 3], ['%', 'sim', 'Repeat the bar before', 'bar'], ['½ %', 'sim', 'Repeat the first half of the bar', 'half'],
+      ['2 %', 'sim', 'Repeat the two bars before', 'two'], ['+bar', 'insbar', 'Add a bar after'], ['−bar', 'delbar', 'Delete bars']],
+    [['Dup', 'dupbar', 'Duplicate bars'], ['All', 'whole', 'Whole song'], ['Pickup', 'pickup', 'Pickup bar on/off'], ['Key ♭', 'key', 'One flat more', -1], ['Key ♯', 'key', 'One sharp more', 1],
       ['−½', 'transpose', 'Transpose down', -1], ['+½', 'transpose', 'Transpose up', 1], ['Copy', 'bcopy', 'Copy bars'], ['Paste', 'bpaste', 'Paste bars'],
       ['↶', 'undo', 'Undo'], ['↷', 'redo', 'Redo']],
   ],
@@ -1049,11 +1071,12 @@ function buildPanel() {
       p.appendChild(r); return;
     }
     const r = document.createElement('div');
-    r.className = 'krow' + (row.length === 8 ? ' k8' : '') + (row.some((k) => k[1] === 'pianoShift') ? ' oct-row' : '');
+    r.className = 'krow' + (row.length === 8 ? ' k8' : row.length === 11 ? ' k11' : '') + (row.some((k) => k[1] === 'pianoShift') ? ' oct-row' : '');
     row.forEach(([label, action, title, arg]) => {
       const b = document.createElement('button');
       b.className = 'key' + (['root', 'cacc', 'slash'].includes(action) ? ' root' : '') + (String(label).length > 5 ? ' tiny' : String(label).length > 3 ? ' small' : '');
       if (action === 'dur') { b.innerHTML = NOTE_SVG(label); b.dataset.arg = label; } else b.textContent = label;
+      if (action === 'sim') { b.innerHTML = arg === 'two' ? SIM_SVG.two : (arg === 'half' ? '<span class="half">½</span>' : '') + SIM_SVG.one; b.classList.remove('small', 'tiny'); }
       b.dataset.action = action; if (arg !== undefined) b.dataset.arg = arg;
       b.title = title || label; b.setAttribute('aria-label', title || label);
       r.appendChild(b);
@@ -1338,9 +1361,22 @@ function barKey(action, arg) {
       song.marks = shiftMarks(song.marks, r.b + 1, copies.length);
       S.bars = { a: r.b + 1, b: r.b + copies.length };
     }); return;
-    case 'prevbar': {
-      if (r.a === 0 || song.measures[r.a - 1].len !== song.measures[r.a].len) { toast('No bar of the same length before this one'); return; }
-      edit(() => { song.measures[r.a] = copyMeasure(song.measures[r.a - 1]); });
+    case 'sim': {                                   // a repeat sign on the selected bars (the first, for two bars), or off
+      const kind = arg, targets = kind === 'two' ? [r.a] : Array.from({ length: r.b - r.a + 1 }, (_, k) => r.a + k);
+      const off = targets.every((m) => (song.marks[m] || {}).sim === kind);
+      if (!off && targets.some((m) => !simFits(song, m, kind))) {
+        toast(kind === 'half' ? 'A half-bar repeat needs a full bar with an even number of beats'
+          : kind === 'two' ? 'A two-bar repeat needs two bars before it and a bar after' : 'No bar of the same length before this one');
+        return;
+      }
+      edit(() => targets.forEach((m) => {
+        const mk = (song.marks[m] = song.marks[m] || {});
+        if (off) { delete mk.sim; return; }
+        mk.sim = kind; clearUnderSim(song, m, kind);
+        if (kind === 'two' && song.marks[m + 1]) delete song.marks[m + 1].sim;
+        if ((song.marks[m - 1] || {}).sim === 'two') delete song.marks[m - 1].sim;   // this bar was the second of a two-bar sign
+      }));
+      toast(off ? 'Repeat sign removed' : SIM_NAMES[kind]);
       return;
     }
     case 'whole': S.bars = null; renderOverlay(); renderInfo(); updatePanel(); followBars(); return;

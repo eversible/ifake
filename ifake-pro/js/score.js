@@ -23,6 +23,20 @@ function svgText(parent, x, y, parts, cls) {
   parent.appendChild(t);
   return t;
 }
+// the simile sign (one bar / two bars), centred on (x, y)
+function simSign(parent, x, y, kind, s = 1) {
+  const g = document.createElementNS(SVGNS, 'g');
+  g.setAttribute('class', 'chord-sym chord-sim');
+  if (kind === 'two') {
+    g.setAttribute('transform', `translate(${x - 18 * s * 0.8} ${y - 15 * s * 0.8}) scale(${s * 0.8})`);
+    g.innerHTML = '<text x="18" y="8" text-anchor="middle" font-size="9" font-weight="700">2</text><circle cx="5.5" cy="15" r="2.4"/><circle cx="30.5" cy="26" r="2.4"/><path d="M4 30h3.4l10.4-18h-3.4zM15.4 30h3.4l10.4-18h-3.4z"/>';
+  } else {
+    g.setAttribute('transform', `translate(${x - 12 * s * 0.85} ${y - 12 * s * 0.85}) scale(${s * 0.85})`);
+    g.innerHTML = '<circle cx="6" cy="7.5" r="2.4"/><circle cx="18" cy="16.5" r="2.4"/><path d="M4 21h3.6L20 3h-3.6z"/>';
+  }
+  parent.appendChild(g);
+  return g;
+}
 function svgPath(parent, d, cls) {
   const p = document.createElementNS(SVGNS, 'path');
   p.setAttribute('d', d);
@@ -245,6 +259,13 @@ export function renderScore(el, song, opts) {
       if (opts.chordsVisible !== false) {
         const cy = topY - 34;
         for (const q of slots) if (q.chord) svgText(svg, xAt(q.pos * TPB) - 2, cy, chordParts(q.chord), 'chord-sym').dataset.cell = q.k ? `${m}:${q.b}:${q.k}` : `${m}:${q.b}`;
+        // a repeat sign over the bar (half bar; two bars: over the bar line between them)
+        const sim = ((song.marks || {})[m] || {}).sim;
+        if (sim) {
+          const half = sim === 'half', two = sim === 'two', end = stave.getNoteEndX();
+          const cx = half ? (xAt((B.beats / 2) * TPB) + end) / 2 : two && k < ms.length - 1 ? x + w : (startX + end) / 2;
+          simSign(svg, cx, cy - 7, two ? 'two' : 'one', half ? 0.75 : 1);
+        }
       }
       x += w;
     });

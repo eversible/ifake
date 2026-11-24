@@ -71,9 +71,15 @@ function chartToText(ch) {
   for (let l = 0; l < ch.cells.length; l += ch.cpl) {
     let s = '', closed = false;
     for (let i = l; i < l + ch.cpl; i += ch.bpb) {
-      const m = marks[i / ch.bpb] || {};
+      const m = marks[i / ch.bpb] || {}, under = (marks[i / ch.bpb - 1] || {}).sim === 'two';
       s += (m.start ? '{ ' : closed ? '' : '| ') + (m.ending ? `N${m.ending} ` : '');
-      for (let k = i; k < Math.min(i + ch.bpb, l + ch.cpl); k++) s += (ch.cells[k] ? compactText(ch.cells[k]) : '.') + ' ';
+      // repeat signs: "%" (the bar before), "%%" (the two bars before; the next bar is left empty), "C7 % ." (half)
+      if (m.sim === 'bar') s += '% ';
+      else if (m.sim === 'two') s += '%% ';
+      else if (under) s += '';
+      else for (let k = i; k < Math.min(i + ch.bpb, l + ch.cpl); k++) {
+        s += (m.sim === 'half' && k - i === ch.bpb / 2 ? '%' : ch.cells[k] ? compactText(ch.cells[k]) : '.') + ' ';
+      }
       closed = !!m.end;
       if (m.end) s += (m.end > 2 ? `}x${m.end}` : '}') + ' ';
     }
@@ -96,6 +102,14 @@ function textToChart(text) {
       if (tok === '{') { (ch.marks[bar] = ch.marks[bar] || {}).start = true; continue; }
       if ((m = /^\}(?:x(\d+))?$/.exec(tok))) { const b = Math.floor((ch.cells.length - 1) / ch.bpb); if (b >= 0) (ch.marks[b] = ch.marks[b] || {}).end = m[1] ? +m[1] : 2; continue; }
       if ((m = /^N([1-3])$/.exec(tok))) { (ch.marks[bar] = ch.marks[bar] || {}).ending = +m[1]; continue; }
+      if (tok === '%' || tok === '%%') {
+        const at = ch.cells.length % ch.bpb;
+        const kind = tok === '%%' ? 'two' : at === 0 ? 'bar' : 'half';
+        (ch.marks[bar] = ch.marks[bar] || {}).sim = kind;
+        const n = kind === 'two' ? 2 * ch.bpb : kind === 'bar' ? ch.bpb : 1;
+        for (let k = 0; k < n; k++) ch.cells.push(null);
+        continue;
+      }
       ch.cells.push(tok === '.' ? null : impliedSeven(parseChord(tok)));
     }
   }
@@ -200,9 +214,54 @@ function applyExternal(merged) {
 }
 
 // ---------------------------------------------------------------- timeline
+// ---------------------------------------------------------------- repeat signs (simile, "%")
+// marks[bar].sim: 'bar' = this bar plays the bar before; 'half' = the second half of the bar plays its first
+// half; 'two' = this bar and the next play the two bars before. The bars under a sign hold no chords.
+function simSpan(ch, b, sim) {                    // the cells a sign covers: [from, to)
+  const bpb = ch.bpb;
+  if (sim === 'half') return [b * bpb + bpb / 2, (b + 1) * bpb];
+  return [b * bpb, (b + (sim === 'two' ? 2 : 1)) * bpb];
+}
+function simFits(ch, b, sim) {
+  const nBars = Math.ceil(ch.cells.length / ch.bpb);
+  if (sim === 'half') return ch.bpb % 2 === 0;
+  if (sim === 'two') return b >= 2 && b + 1 < nBars;
+  return b >= 1 && b < nBars;
+}
+// after an edit: a sign goes when chords are put under it or it no longer fits
+function tidySims(ch) {
+  const marks = ch.marks || {};
+  for (const k of Object.keys(marks).map(Number).sort((a, b) => a - b)) {
+    const m = marks[k]; if (!m || !m.sim) continue;
+    const [a, z] = simSpan(ch, k, m.sim);
+    if (!simFits(ch, k, m.sim) || ch.cells.slice(a, z).some(Boolean)) { delete m.sim; continue; }
+    if (m.sim === 'two' && marks[k + 1]) delete marks[k + 1].sim;   // the second bar belongs to this sign
+  }
+  for (const [k, v] of Object.entries(marks)) if (!v.start && !v.end && !v.ending && !v.sim) delete marks[k];
+}
+// the chords as played: each sign's cells take the chords of the cells just before it (a sign that starts
+// while a chord is held on restrikes that chord)
+function playedCells(ch) {
+  const out = ch.cells.slice(), bpb = ch.bpb, marks = ch.marks || {};
+  const soundingAt = (i) => { for (let j = i; j >= 0; j--) if (out[j]) return out[j]; return null; };
+  for (let b = 0; b * bpb < out.length; b++) {
+    const sim = (marks[b] || {}).sim; if (!sim) continue;
+    const [a, z] = simSpan(ch, b, sim), len = z - a, src = a - len;
+    if (src < 0) continue;
+    for (let k = 0; k < len; k++) out[a + k] = out[src + k];
+    if (!out[a]) out[a] = soundingAt(src);
+  }
+  return out;
+}
+const SIM_SVG = {
+  one: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7.5" r="2.4"/><circle cx="18" cy="16.5" r="2.4"/><path d="M4 21h3.6L20 3h-3.6z"/></svg>',
+  two: '<svg viewBox="0 0 36 30" aria-hidden="true"><text x="18" y="8" text-anchor="middle" font-size="9" font-weight="700">2</text><circle cx="5.5" cy="15" r="2.4"/><circle cx="30.5" cy="26" r="2.4"/><path d="M4 30h3.4l10.4-18h-3.4zM15.4 30h3.4l10.4-18h-3.4z"/></svg>',
+};
+const SIM_NAMES = { bar: 'Repeat the bar before', half: 'Repeat the first half of the bar', two: 'Repeat the two bars before' };
+
 function timeline() {
   if (S.tl) return S.tl;
-  const cells = S.chart.cells, n = cells.length;
+  const cells = playedCells(S.chart), n = cells.length;
   const segs = [], info = new Array(n);
   let cur = -1;
   for (let i = 0; i < n; i++) {
@@ -255,6 +314,7 @@ function edit(fn, opts = {}) {
   const before = snapshot();
   const result = fn();
   if (result === false) return;
+  tidySims(S.chart);
   S.undo.push(before); if (S.undo.length > 300) S.undo.shift();
   S.redo = [];
   afterEdit(opts);
@@ -291,9 +351,10 @@ const KB = [
   // page 2: form and layout
   ['|:', 'rstart', 'form p2', null, 'Repeat start'], [':|', 'rend', 'form p2', null, 'Repeat end'], ['×2', 'rtimes', 'form small p2', null, 'Times to play'],
   ['1.', 'ending', 'form p2', 1, '1st ending'], ['2.', 'ending', 'form p2', 2, '2nd ending'], ['3.', 'ending', 'form p2', 3, '3rd ending'],
-  ['+bar', 'insbar', 'form small p2', null, 'Insert bar'], ['−bar', 'delbar', 'form small p2', null, 'Delete bar'], ['Dup', 'dupbar', 'form small p2', null, 'Duplicate bar'], ['%', 'prevbar', 'form p2', null, 'Repeat previous bar'],
-  ['−½', 'tr', 'alt small p2 span2', -1, 'Transpose down'], ['+½', 'tr', 'alt small p2 span2', 1, 'Transpose up'],
-  ['+ line', 'lineadd', 'alt small p2 span3', null, 'Add a line at the end'], ['− line', 'linedel', 'alt small p2 span3', null, 'Remove the last line (if empty)'],
+  ['+bar', 'insbar', 'form small p2', null, 'Insert bar'], ['−bar', 'delbar', 'form small p2', null, 'Delete bar'], ['Dup', 'dupbar', 'form small p2', null, 'Duplicate bar'], ['%', 'sim', 'form p2', 'bar', SIM_NAMES.bar],
+  ['½ %', 'sim', 'form small p2 span2', 'half', SIM_NAMES.half], ['2 %', 'sim', 'form small p2 span2', 'two', SIM_NAMES.two],
+  ['−½', 'tr', 'alt small p2', -1, 'Transpose down'], ['+½', 'tr', 'alt small p2', 1, 'Transpose up'],
+  ['+ line', 'lineadd', 'alt small p2 span2', null, 'Add a line at the end'], ['− line', 'linedel', 'alt small p2 span2', null, 'Remove the last line (if empty)'],
   // both pages: moving, undo, hearing, and the page switch
   ['◀', 'left', 'alt pb', null, 'Previous cell'], ['▶', 'right', 'alt pb', null, 'Next cell'], ['⇥', 'nextbar', 'alt pb', null, 'Next bar'],
   ['+cell', 'ins', 'alt small pb'], ['−cell', 'del', 'alt small pb'],
@@ -314,6 +375,8 @@ function buildKeyboard() {
     const b = document.createElement('button');
     b.className = 'key ' + (cls || '');
     b.textContent = label;
+    // the repeat-sign keys show the signs themselves
+    if (action === 'sim') b.innerHTML = arg === 'two' ? SIM_SVG.two : (arg === 'half' ? '<span class="half">½</span>' : '') + SIM_SVG.one;
     b.dataset.k = idx;
     if (title) b.title = title; b.setAttribute('aria-label', title || label);
     kb.appendChild(b);
@@ -438,14 +501,15 @@ function keyAction(action, arg) {
     }
     case 'hear': audition(i, true); return;
     case 'rstart': case 'rend': case 'rtimes': case 'ending': formAction(action, arg); return;
-    case 'insbar': case 'delbar': case 'dupbar': case 'prevbar': barAction(action); return;
+    case 'insbar': case 'delbar': case 'dupbar': barAction(action); return;
+    case 'sim': simAction(arg); return;
   }
 }
 
 // bars covered by the selection
 const selBars = () => { const a = Math.floor(selLo() / S.chart.bpb), b = Math.floor(selHi() / S.chart.bpb); return Array.from({ length: b - a + 1 }, (_, k) => a + k); };
 const markOf = (b) => (S.chart.marks[b] = S.chart.marks[b] || {});
-const tidyMarks = () => { for (const [k, v] of Object.entries(S.chart.marks)) if (!v.start && !v.end && !v.ending) delete S.chart.marks[k]; };
+const tidyMarks = () => { for (const [k, v] of Object.entries(S.chart.marks)) if (!v.start && !v.end && !v.ending && !v.sim) delete S.chart.marks[k]; };
 function formAction(action, arg) {
   if (!S.chart.marks) S.chart.marks = {};
   const bars = selBars(), first = bars[0], last = bars[bars.length - 1];
@@ -463,13 +527,30 @@ function formAction(action, arg) {
     tidyMarks();
   }, { audition: false });
 }
+// put a repeat sign on the selected bars (the first of them for a two-bar sign), or take it off
+function simAction(kind) {
+  const ch = S.chart; if (!ch.marks) ch.marks = {};
+  const bars = selBars(), targets = kind === 'two' ? [bars[0]] : bars;
+  const off = targets.every((b) => (ch.marks[b] || {}).sim === kind);
+  if (!off) {
+    if (kind === 'half' && ch.bpb % 2) { toast('A half-bar repeat needs an even number of beats in the bar'); return; }
+    if (targets.some((b) => !simFits(ch, b, kind))) { toast(kind === 'two' ? 'A two-bar repeat needs two bars before it and a bar after' : 'No bar before this one to repeat'); return; }
+  }
+  edit(() => {
+    targets.forEach((b) => {
+      const m = markOf(b);
+      if (off) { delete m.sim; return; }
+      m.sim = kind;
+      const [a, z] = simSpan(ch, b, kind);
+      for (let i = a; i < z; i++) ch.cells[i] = null;
+      if (kind === 'two' && ch.marks[b + 1]) delete ch.marks[b + 1].sim;
+      if ((ch.marks[b - 1] || {}).sim === 'two') delete ch.marks[b - 1].sim;   // this bar was the second of a two-bar sign
+    });
+  }, { audition: false });
+  toast(off ? 'Repeat sign removed' : SIM_NAMES[kind]);
+}
 function barAction(action) {
   const bpb = S.chart.bpb, cells = S.chart.cells, b = Math.floor(S.sel.a / bpb), at = b * bpb;
-  if (action === 'prevbar') {
-    if (b === 0) { toast('No bar before this one'); return; }
-    edit(() => { for (let k = 0; k < bpb; k++) cells[at + k] = cells[at - bpb + k] ? cloneChord(cells[at - bpb + k]) : null; });
-    return;
-  }
   edit(() => {
     if (action === 'insbar' || action === 'dupbar') {
       const copy = action === 'dupbar' ? cells.slice(at, at + bpb).map((c) => (c ? cloneChord(c) : null)) : new Array(bpb).fill(null);
@@ -545,6 +626,14 @@ function renderGrid() {
   grid.style.setProperty('--cpl', ch.cpl);
   sizeRows(grid, ch);
   const out = [];
+  // repeat signs by the cell they start at: { kind, width in cells }
+  const signs = {};
+  for (const [k, m] of Object.entries(ch.marks || {})) {
+    if (!m.sim) continue;
+    const b = +k, [a, z] = simSpan(ch, b, m.sim);
+    const sameLine = Math.floor(a / ch.cpl) === Math.floor((z - 1) / ch.cpl);
+    signs[a] = { kind: m.sim, w: sameLine ? z - a : ch.cpl - (a % ch.cpl) };
+  }
   for (let i = 0; i < ch.cells.length; i++) {
     const col = i % ch.cpl;
     const cls = ['cell'];
@@ -559,9 +648,11 @@ function renderGrid() {
     }
     if (i % ch.bpb === ch.bpb - 1 && m.end) { cls.push('rep-end'); inner += `<span class="re"></span>${m.end > 2 ? `<span class="rtimes">×${m.end}</span>` : ''}`; }
     if (col === 0 && !m.ending) inner += `<span class="barno">${barOf(i)}</span>`;
+    const sg = signs[i];
+    if (sg) inner += `<span class="sim sim-${sg.kind}" style="width:calc(${sg.w * 100}% - 4px)" title="${SIM_NAMES[sg.kind]}">${sg.kind === 'two' ? SIM_SVG.two : SIM_SVG.one}</span>`;
     if (c) {
       let span = 1;
-      while (col + span < ch.cpl && span < ch.bpb * 2 && !ch.cells[i + span]) span++;
+      while (col + span < ch.cpl && span < ch.bpb * 2 && !ch.cells[i + span] && !signs[i + span]) span++;
       inner += `<span class="ch${c.nc ? ' nc' : ''}" style="width:calc(${span * 100}% - 6px)" title="${esc(chordText(c))}">${chordHTML(c)}</span>`;
     }
     out.push(`<div class="${cls.join(' ')}" data-i="${i}">${inner}</div>`);
@@ -996,16 +1087,16 @@ function previewType() {
 const capTok = (t) => t.replace(/^[a-g]/, (x) => x.toUpperCase()).replace(/\/([a-g])(?=[#b♯♭]?$)/, (m, x) => '/' + x.toUpperCase());
 function planText(v) {
   const bpb = S.chart.bpb;
-  const parse = (t) => (t === '.' ? null : t === '%' ? '%' : parseChord(capTok(t)));
+  const parse = (t) => (t === '.' ? null : t === '%' || t === '%%' ? t : parseChord(capTok(t)));
   if (!v.includes('|')) {
     const toks = splitTokens(v);
     if (toks.length === 1) {
       if (toks[0] === '.') return { clear: true };
-      if (toks[0] === '%') return { bars: [['%']] };
+      if (toks[0] === '%' || toks[0] === '%%') return { bars: [[toks[0]]] };
       return { single: parseChord(capTok(toks[0])) };
     }
     if (toks.includes('.')) {
-      if (toks.includes('%')) throw new Error('"%" repeats a whole bar — use it between "|" bar lines');
+      if (toks.some((x) => x.startsWith('%'))) throw new Error('"%" repeats a bar — use it between "|" bar lines');
       return { beats: toks.map(parse) };
     }
     return { bars: toks.map((t) => [parse(t)]) };
@@ -1016,7 +1107,11 @@ function planText(v) {
   const bars = parts.map((p, k) => {
     const toks = splitTokens(p).map(parse);
     if (toks.length > bpb) throw new Error(`Bar ${k + 1} has ${toks.length} items but only ${bpb} beats`);
-    if (toks.includes('%') && toks.length > 1) throw new Error(`"%" must be on its own in bar ${k + 1}`);
+    if (toks.includes('%%') && toks.length > 1) throw new Error(`"%%" (repeat two bars) must be on its own in bar ${k + 1}`);
+    const at = toks.indexOf('%');
+    if (at >= 0 && toks.length > 1 && !(toks.length === 2 && at === 1 && toks[0] && bpb % 2 === 0)) {
+      throw new Error(`In bar ${k + 1}, "%" goes on its own (repeat the bar before) or second of two ("C7 %": repeat the half bar)`);
+    }
     return toks;
   });
   return { bars };
@@ -1042,20 +1137,30 @@ function applyType() {
     setSel(at, at + plan.beats.length - 1);
     toggleTypebar(false); return;
   }
-  const start = barStart(S.sel.a);
-  let prev = start >= bpb ? cells.slice(start - bpb, start).map((c) => (c ? cloneChord(c) : null)) : null;
-  if (plan.bars[0][0] === '%' && !prev) { $('#type-msg').textContent = 'Nothing before this bar to repeat'; $('#type-msg').classList.add('err'); return; }
+  const start = barStart(S.sel.a), b0 = start / bpb;
+  const nBars = plan.bars.reduce((n, toks) => n + (toks[0] === '%%' ? 2 : 1), 0);
+  const fail = (msg) => { $('#type-msg').textContent = msg; $('#type-msg').classList.add('err'); };
+  if (plan.bars[0][0] === '%' && plan.bars[0].length === 1 && b0 < 1) { fail('Nothing before this bar to repeat'); return; }
+  if (plan.bars[0][0] === '%%' && b0 < 2) { fail('A two-bar repeat needs two bars before it'); return; }
+  if (!S.chart.marks) S.chart.marks = {};
   edit(() => {
-    ensureLength(start + plan.bars.length * bpb);
-    plan.bars.forEach((toks, k) => {
-      const placed = toks[0] === '%' ? prev.map((c) => (c ? cloneChord(c) : null)) : placeBar(toks);
-      placed.forEach((c, j) => { cells[start + k * bpb + j] = c; });
-      prev = placed;
+    ensureLength(start + nBars * bpb);
+    let b = b0;
+    plan.bars.forEach((toks) => {
+      const m = markOf(b); delete m.sim;
+      if (toks[0] === '%' && toks.length === 1) m.sim = 'bar';
+      else if (toks[0] === '%%') { m.sim = 'two'; if (S.chart.marks[b + 1]) delete S.chart.marks[b + 1].sim; }
+      else if (toks[1] === '%') m.sim = 'half';
+      const placed = m.sim === 'bar' || m.sim === 'two' ? new Array(bpb * (m.sim === 'two' ? 2 : 1)).fill(null)
+        : m.sim === 'half' ? placeBar([toks[0], ...new Array(bpb / 2 - 1).fill(null)]).map((c, j) => (j < bpb / 2 ? c : null))
+        : placeBar(toks);
+      placed.forEach((c, j) => { cells[b * bpb + j] = c; });
+      b += m.sim === 'two' ? 2 : 1;
     });
   }, { audition: false });
-  setSel(start, start + plan.bars.length * bpb - 1);
+  setSel(start, start + nBars * bpb - 1);
   toggleTypebar(false);
-  toast(`Entered ${plan.bars.length} bar${plan.bars.length > 1 ? 's' : ''}`);
+  toast(`Entered ${nBars} bar${nBars > 1 ? 's' : ''}`);
 }
 
 // ---------------------------------------------------------------- top bar, sheets, shortcuts
@@ -1349,7 +1454,7 @@ async function boot() {
     navigator.serviceWorker.register('sw.js').catch(() => {});
     watchForUpdates();
   }
-  window.__chordpad = { S, engine, seq, store, timeline, keyAction, setSel, applyType, planText, playRange, persist, libraryData };   // for testing
+  window.__chordpad = { S, engine, seq, store, timeline, keyAction, setSel, applyType, planText, playRange, persist, libraryData, chartToText, textToChart };   // for testing
 }
 boot();
 

@@ -264,3 +264,12 @@ details.more > summary::-webkit-details-marker { display: none; }
 details.more > summary::after { content: ' ›'; }
 details.more[open] > summary::after { content: ' ⌄'; }
 label.btn.file { display: inline-flex; align-items: center; cursor: pointer; }
+
+/* repeat signs (%, half-bar, two-bar) */
+.cell .sim { position: absolute; left: 2px; top: 0; bottom: 0; z-index: 1; display: flex; align-items: center; justify-content: center; pointer-events: none; color: var(--ink, #1c1c1e); }
+.cell .sim svg { height: 46%; width: auto; fill: currentColor; overflow: visible; }
+.cell .sim-half svg { height: 38%; }
+.cell .sim-two svg { height: 62%; }
+#keyboard .key svg { height: 20px; width: auto; fill: currentColor; vertical-align: middle; }
+#keyboard .key svg[viewBox="0 0 36 30"] { height: 26px; }
+#keyboard .key .half { font-size: 15px; margin-right: 4px; vertical-align: middle; }
