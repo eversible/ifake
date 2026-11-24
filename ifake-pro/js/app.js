@@ -15,7 +15,7 @@ import { nameChord, chordKeys, nameTable } from './recognise.js';
 import { layoutGrid } from './grid.js';
 import { newSong, songFromText, songToText, serialiseSong, deserialiseSong, cellMap, playOrder, parseChordBars, barNumber,
   hasChords, slotList, beatGrid, getSlot, setSlot, setDivision, copyChords, mapChords, fillChords,
-  simFits, simCover, clearUnderSim, tidySims, playedMeasures } from './song.js';
+  simFits, simCover, clearUnderSim, tidySims, playedMeasures, slashMark, syncSlashes } from './song.js';
 import { renderScore, hitTest } from './score.js';
 import { DEMO_SONG_TEXT } from './demo.js';
 
@@ -195,7 +195,7 @@ function edit(fn, opts = {}) {
     const id = S.song.id; S.song = deserialiseSong(JSON.parse(before)); S.song.id = id; clampSelection(); invalidate(); throw e;
   }
   if (r === false) return;
-  tidySims(S.song);
+  tidySims(S.song); syncSlashes(S.song);
   S.undo.push(before); if (S.undo.length > 200) S.undo.shift(); S.redo = [];
   afterEdit(opts);
 }
@@ -849,7 +849,8 @@ const SIM_SVG = {
   one: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7.5" r="2.4"/><circle cx="18" cy="16.5" r="2.4"/><path d="M4 21h3.6L20 3h-3.6z"/></svg>',
   two: '<svg viewBox="0 0 36 30" aria-hidden="true"><text x="18" y="8" text-anchor="middle" font-size="9" font-weight="700">2</text><circle cx="5.5" cy="15" r="2.4"/><circle cx="30.5" cy="26" r="2.4"/><path d="M4 30h3.4l10.4-18h-3.4zM15.4 30h3.4l10.4-18h-3.4z"/></svg>',
 };
-const SIM_NAMES = { bar: 'Repeat the bar before', half: 'Repeat the first half of the bar', two: 'Repeat the two bars before' };
+const SIM_NAMES = { bar: 'Repeat the bar before', two: 'Repeat the two bars before' };
+const BEAT_SVG = '<svg viewBox="0 0 12 24" aria-hidden="true"><path d="M1.5 22.5h3.4L10.5 1.5H7.1z"/></svg>';
 function renderChordGrid() {
   const g = $('#chordgrid'), L = S.layout, on = (S.layer === 'chords' || S.view === 'grid') && !!L;
   $('#score-wrap').classList.toggle('chords-mode', on);
@@ -895,7 +896,8 @@ function renderChordGrid() {
     if (c.last && mk.end) { cls.push('rep-end'); inner += `<span class="re"></span>${mk.end > 2 ? `<span class="rtimes">×${mk.end}</span>` : ''}`; }
     else if (lineEnd) cls.push('line-end');
     const chord = getSlot(song.measures[c.m], c.b, c.k);
-    if (chord) {
+    if (chord && chord.rep) inner += `<span class="beat">${BEAT_SVG}</span>`;
+    else if (chord) {
       // the symbol may run on over the empty cells after it (up to two bars, same line)
       let j = k + 1;
       while (j < cells.length && cells[j].pos + (cells[j].m - c.m) * bpb - c.pos < 2 * bpb && cells[j].line === c.line && !getSlot(song.measures[cells[j].m], cells[j].b, cells[j].k) && !signs.has(j)) j++;
@@ -1041,12 +1043,12 @@ const PANELS = {
       ['6', 'q', '6', 'six'], ['7', 'q', '7', 'dom7'], ['9', 'q', '9', 'dom9'], ['11', 'q', '11', 'dom11'], ['13', 'q', '13', 'dom13']],
     [['♭9', 'x', '♭9', '♭9'], ['♯9', 'x', '♯9', '♯9'], ['♯11', 'x', '♯11', '♯11'], ['♭13', 'x', '♭13', '♭13'], ['♭5', 'x', '♭5', '♭5'],
       ['♯5', 'x', '♯5', '♯5'], ['sus4', 'sus', 'sus4', '4'], ['sus2', 'sus', 'sus2', '2'], ['6/9', 'q', '6/9', 'sixnine'], ['alt', 'q', 'alt', 'alt']],
-    [['add9', 'add', 'add9', '9'], ['add11', 'add', 'add11', '11'], ['omit3', 'omit', 'omit3', '3'], ['⇄', 'cenh', 'Respell root'], ['N.C.', 'nc', 'No chord'],
+    [['add9', 'add', 'add9', '9'], ['add11', 'add', 'add11', '11'], ['omit3', 'omit', 'omit3', '3'], ['⇄', 'cenh', 'Respell root'], ['N.C.', 'nc', 'No chord'], ['/', 'beat', 'Repeat the chord on this beat (a beat slash)'],
       ['⌨', 'type', 'Type chords'], ['⌫', 'cdel', 'Clear'], ['◀', 'cprev', 'Previous beat'], ['▶', 'cnext', 'Next beat'], ['↶', 'undo', 'Undo']],
   ],
   bars: [
     [['|:', 'rstart', 'Repeat start'], [':|', 'rend', 'Repeat end'], ['×2', 'rtimes', 'Times to play'], ['1.', 'ending', '1st ending', 1], ['2.', 'ending', '2nd ending', 2],
-      ['3.', 'ending', '3rd ending', 3], ['%', 'sim', 'Repeat the bar before', 'bar'], ['½ %', 'sim', 'Repeat the first half of the bar', 'half'],
+      ['3.', 'ending', '3rd ending', 3], ['%', 'sim', 'Repeat the bar before', 'bar'],
       ['2 %', 'sim', 'Repeat the two bars before', 'two'], ['+bar', 'insbar', 'Add a bar after'], ['−bar', 'delbar', 'Delete bars']],
     [['Dup', 'dupbar', 'Duplicate bars'], ['All', 'whole', 'Whole song'], ['Pickup', 'pickup', 'Pickup bar on/off'], ['Key ♭', 'key', 'One flat more', -1], ['Key ♯', 'key', 'One sharp more', 1],
       ['−½', 'transpose', 'Transpose down', -1], ['+½', 'transpose', 'Transpose up', 1], ['Copy', 'bcopy', 'Copy bars'], ['Paste', 'bpaste', 'Paste bars'],
@@ -1076,7 +1078,8 @@ function buildPanel() {
       const b = document.createElement('button');
       b.className = 'key' + (['root', 'cacc', 'slash'].includes(action) ? ' root' : '') + (String(label).length > 5 ? ' tiny' : String(label).length > 3 ? ' small' : '');
       if (action === 'dur') { b.innerHTML = NOTE_SVG(label); b.dataset.arg = label; } else b.textContent = label;
-      if (action === 'sim') { b.innerHTML = arg === 'two' ? SIM_SVG.two : (arg === 'half' ? '<span class="half">½</span>' : '') + SIM_SVG.one; b.classList.remove('small', 'tiny'); }
+      if (action === 'sim') { b.innerHTML = arg === 'two' ? SIM_SVG.two : SIM_SVG.one; b.classList.remove('small', 'tiny'); }
+      if (action === 'beat') b.innerHTML = BEAT_SVG;
       b.dataset.action = action; if (arg !== undefined) b.dataset.arg = arg;
       b.title = title || label; b.setAttribute('aria-label', title || label);
       r.appendChild(b);
@@ -1263,6 +1266,17 @@ function keyAction(action, arg) {
     case 'root': case 'cacc': case 'slash': case 'q': case 'x': case 'sus': case 'add': case 'omit': case 'cenh': case 'nc': case 'cdel':
       chordKey(action, arg); return;
     case 'cprev': case 'cnext': moveChordCell(action === 'cnext' ? 1 : -1); return;
+    case 'beat': {
+      const c = getSlot(csMeas(), S.cs.beat, S.cs.k || 0);
+      if (c && c.rep) { edit(() => { setSlot(csMeas(), S.cs.beat, S.cs.k || 0, null); }); toast('Beat slash removed'); return; }
+      const pm = playedMeasures(S.song), pos = csPos();
+      let before = null;
+      for (let k = S.cs.m; k >= 0 && !before; k--) { const sl = slotList(pm[k]).filter((y) => y.chord && (k < S.cs.m || y.pos < pos - 1e-9)); if (sl.length) before = sl[sl.length - 1].chord; }
+      if (!before || before.nc) { toast('No chord before this beat to repeat'); return; }
+      edit(() => { setSlot(csMeas(), S.cs.beat, S.cs.k || 0, slashMark()); }, { hear: () => hearChordAt(S.cs.m, csPos()) });
+      moveChordCell(1);
+      return;
+    }
     case 'div': divideBeat(arg); return;
     // ----- bars
     default: barKey(action, arg);
@@ -1365,8 +1379,7 @@ function barKey(action, arg) {
       const kind = arg, targets = kind === 'two' ? [r.a] : Array.from({ length: r.b - r.a + 1 }, (_, k) => r.a + k);
       const off = targets.every((m) => (song.marks[m] || {}).sim === kind);
       if (!off && targets.some((m) => !simFits(song, m, kind))) {
-        toast(kind === 'half' ? 'A half-bar repeat needs a full bar with an even number of beats'
-          : kind === 'two' ? 'A two-bar repeat needs two bars before it and a bar after' : 'No bar of the same length before this one');
+        toast(kind === 'two' ? 'A two-bar repeat needs two bars before it and a bar after' : 'No bar of the same length before this one');
         return;
       }
       edit(() => targets.forEach((m) => {

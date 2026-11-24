@@ -273,3 +273,7 @@ label.btn.file { display: inline-flex; align-items: center; cursor: pointer; }
 #keyboard .key svg { height: 20px; width: auto; fill: currentColor; vertical-align: middle; }
 #keyboard .key svg[viewBox="0 0 36 30"] { height: 26px; }
 #keyboard .key .half { font-size: 15px; margin-right: 4px; vertical-align: middle; }
+/* beat slash: the chord before, again on this beat */
+.cell .beat { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; color: var(--ink); }
+.cell .beat svg { height: 40%; width: auto; fill: currentColor; }
+#keyboard .key[data-k] svg[viewBox="0 0 12 24"] { height: 22px; }

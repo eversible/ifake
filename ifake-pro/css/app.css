@@ -551,3 +551,7 @@ body.split.head-up #tabs { margin: 3px 4px 0; }
 #panel .key[data-action="sim"] svg { height: 20px; width: auto; vertical-align: middle; }
 #panel .key[data-action="sim"][data-arg="two"] svg { height: 25px; }
 #panel .key .half { font-size: 14px; margin-right: 3px; vertical-align: middle; }
+/* beat slash: the chord before, again on this beat */
+#chordgrid .cell .beat { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; display: flex; align-items: center; justify-content: center; pointer-events: none; color: #1d1b16; }
+#chordgrid .cell .beat svg { height: 34%; max-height: 24px; width: auto; fill: currentColor; }
+#panel .key[data-action="beat"] svg { height: 20px; width: auto; vertical-align: middle; }

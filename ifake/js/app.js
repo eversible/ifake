@@ -61,7 +61,7 @@ function splitTokens(s) {
   if (buf) out.push(buf);
   return out;
 }
-const compactText = (c) => chordText(c).replace(/,\s+/g, ',');
+const compactText = (c) => (c.rep ? '/' : chordText(c).replace(/,\s+/g, ','));
 
 // ---------------------------------------------------------------- chart (de)serialisation
 // Text format: "|" bar line, "{" repeat start, "}" repeat end ("}x3" = play 3 times), "N1"/"N2"/"N3" endings, "." empty beat
@@ -73,13 +73,11 @@ function chartToText(ch) {
     for (let i = l; i < l + ch.cpl; i += ch.bpb) {
       const m = marks[i / ch.bpb] || {}, under = (marks[i / ch.bpb - 1] || {}).sim === 'two';
       s += (m.start ? '{ ' : closed ? '' : '| ') + (m.ending ? `N${m.ending} ` : '');
-      // repeat signs: "%" (the bar before), "%%" (the two bars before; the next bar is left empty), "C7 % ." (half)
+      // repeat signs: "%" (the bar before), "%%" (the two bars before; the next bar is left empty); "/" = beat slash
       if (m.sim === 'bar') s += '% ';
       else if (m.sim === 'two') s += '%% ';
       else if (under) s += '';
-      else for (let k = i; k < Math.min(i + ch.bpb, l + ch.cpl); k++) {
-        s += (m.sim === 'half' && k - i === ch.bpb / 2 ? '%' : ch.cells[k] ? compactText(ch.cells[k]) : '.') + ' ';
-      }
+      else for (let k = i; k < Math.min(i + ch.bpb, l + ch.cpl); k++) s += (ch.cells[k] ? compactText(ch.cells[k]) : '.') + ' ';
       closed = !!m.end;
       if (m.end) s += (m.end > 2 ? `}x${m.end}` : '}') + ' ';
     }
@@ -102,34 +100,34 @@ function textToChart(text) {
       if (tok === '{') { (ch.marks[bar] = ch.marks[bar] || {}).start = true; continue; }
       if ((m = /^\}(?:x(\d+))?$/.exec(tok))) { const b = Math.floor((ch.cells.length - 1) / ch.bpb); if (b >= 0) (ch.marks[b] = ch.marks[b] || {}).end = m[1] ? +m[1] : 2; continue; }
       if ((m = /^N([1-3])$/.exec(tok))) { (ch.marks[bar] = ch.marks[bar] || {}).ending = +m[1]; continue; }
-      if (tok === '%' || tok === '%%') {
-        const at = ch.cells.length % ch.bpb;
-        const kind = tok === '%%' ? 'two' : at === 0 ? 'bar' : 'half';
+      if ((tok === '%' || tok === '%%') && ch.cells.length % ch.bpb === 0) {
+        const kind = tok === '%%' ? 'two' : 'bar';
         (ch.marks[bar] = ch.marks[bar] || {}).sim = kind;
-        const n = kind === 'two' ? 2 * ch.bpb : kind === 'bar' ? ch.bpb : 1;
-        for (let k = 0; k < n; k++) ch.cells.push(null);
+        for (let k = 0; k < (kind === 'two' ? 2 : 1) * ch.bpb; k++) ch.cells.push(null);
         continue;
       }
-      ch.cells.push(tok === '.' ? null : impliedSeven(parseChord(tok)));
+      ch.cells.push(tok === '.' ? null : tok === '/' || tok === '%' ? slashMark() : impliedSeven(parseChord(tok)));
     }
   }
   // sanity-check the layout: 2–8 beats per bar, whole bars on each line
   if (!(ch.bpb >= 2 && ch.bpb <= 8)) ch.bpb = 4;
   if (!(ch.cpl >= ch.bpb * 2 && ch.cpl <= 32 && ch.cpl % ch.bpb === 0)) ch.cpl = ch.bpb * 4;
   padCells(ch);
+  tidySims(ch); syncSlashes(ch);
   return ch;
 }
 
 // in this app Δ, ø and alt bring their 7 with them: a text chart's "CΔ7" is that implied 7
 function impliedSeven(c) { if (c && c.quals.includes('dom7') && c.quals.some((q) => q === 'maj' || q === 'hdim' || q === 'alt')) c.auto7 = true; return c; }
 // cells are saved as chord text; a trailing "~" marks a 7 that is only implied by Δ / ø / alt
-const cellText = (c) => (c ? chordText(c) + (c.auto7 ? '~' : '') : '');
-const parseCell = (t) => { const auto = t.endsWith('~'); const c = parseChord(auto ? t.slice(0, -1) : t); if (auto && c.quals.includes('dom7')) c.auto7 = true; return c; };
+const cellText = (c) => (c ? (c.rep ? '/' : chordText(c) + (c.auto7 ? '~' : '')) : '');
+const parseCell = (t) => { if (t === '/') return slashMark(); const auto = t.endsWith('~'); const c = parseChord(auto ? t.slice(0, -1) : t); if (auto && c.quals.includes('dom7')) c.auto7 = true; return c; };
 const serialise = (ch) => ({ id: ch.id, title: ch.title, cpl: ch.cpl, bpb: ch.bpb, cells: ch.cells.map(cellText), marks: ch.marks || {} });
 function deserialise(o) {
   const ch = { id: o.id || uid(), title: o.title || 'Untitled', cpl: o.cpl || 16, bpb: o.bpb || 4, cells: [], marks: JSON.parse(JSON.stringify(o.marks || {})) };
   ch.cells = (o.cells || []).map((t) => { if (!t) return null; try { return parseCell(t); } catch (e) { return null; } });
   padCells(ch);
+  tidySims(ch); syncSlashes(ch);
   return ch;
 }
 function padCells(ch) {
@@ -215,18 +213,15 @@ function applyExternal(merged) {
 
 // ---------------------------------------------------------------- timeline
 // ---------------------------------------------------------------- repeat signs (simile, "%")
-// marks[bar].sim: 'bar' = this bar plays the bar before; 'half' = the second half of the bar plays its first
-// half; 'two' = this bar and the next play the two bars before. The bars under a sign hold no chords.
+// marks[bar].sim: 'bar' = this bar plays the bar before; 'two' = this bar and the next play the two bars before.
+// The bars under a sign hold no chords. (A single beat is repeated with a beat slash, "/": see below.)
 function simSpan(ch, b, sim) {                    // the cells a sign covers: [from, to)
-  const bpb = ch.bpb;
-  if (sim === 'half') return [b * bpb + bpb / 2, (b + 1) * bpb];
-  return [b * bpb, (b + (sim === 'two' ? 2 : 1)) * bpb];
+  return [b * ch.bpb, (b + (sim === 'two' ? 2 : 1)) * ch.bpb];
 }
 function simFits(ch, b, sim) {
   const nBars = Math.ceil(ch.cells.length / ch.bpb);
-  if (sim === 'half') return ch.bpb % 2 === 0;
   if (sim === 'two') return b >= 2 && b + 1 < nBars;
-  return b >= 1 && b < nBars;
+  return sim === 'bar' && b >= 1 && b < nBars;
 }
 // after an edit: a sign goes when chords are put under it or it no longer fits
 function tidySims(ch) {
@@ -257,7 +252,29 @@ const SIM_SVG = {
   one: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7.5" r="2.4"/><circle cx="18" cy="16.5" r="2.4"/><path d="M4 21h3.6L20 3h-3.6z"/></svg>',
   two: '<svg viewBox="0 0 36 30" aria-hidden="true"><text x="18" y="8" text-anchor="middle" font-size="9" font-weight="700">2</text><circle cx="5.5" cy="15" r="2.4"/><circle cx="30.5" cy="26" r="2.4"/><path d="M4 30h3.4l10.4-18h-3.4zM15.4 30h3.4l10.4-18h-3.4z"/></svg>',
 };
-const SIM_NAMES = { bar: 'Repeat the bar before', half: 'Repeat the first half of the bar', two: 'Repeat the two bars before' };
+const SIM_NAMES = { bar: 'Repeat the bar before', two: 'Repeat the two bars before' };
+
+// ---------------------------------------------------------------- beat slashes ("/")
+// A beat slash is one beat of the chord before it, played again. The cell holds a copy of that chord marked
+// rep (repOf = the chord it was copied from, as text); after every edit the copies follow the chord before
+// them, and a copy that was changed by hand (it no longer matches repOf) becomes an ordinary chord.
+const BEAT_SVG = '<svg viewBox="0 0 12 24" aria-hidden="true"><path d="M1.5 22.5h3.4L10.5 1.5H7.1z"/></svg>';
+const slashMark = () => Object.assign(parseChord('C'), { rep: true, repOf: null });
+function syncSlashes(ch) {
+  const out = playedCells(ch);                    // what sounds (repeat signs filled in); shares the cell objects
+  for (let i = 0; i < ch.cells.length; i++) {
+    const c = ch.cells[i];
+    if (!c || !c.rep) continue;
+    if (c.repOf !== null && c.repOf !== undefined && chordText(c) !== c.repOf) { delete c.rep; delete c.repOf; continue; }   // changed by hand
+    let src = null;
+    for (let j = i - 1; j >= 0 && !src; j--) if (out[j]) src = out[j];
+    if (!src || src.nc) { ch.cells[i] = null; continue; }
+    const d = cloneChord(src);
+    for (const k of Object.keys(c)) delete c[k];
+    Object.assign(c, d, { rep: true });
+    c.repOf = chordText(c);
+  }
+}
 
 function timeline() {
   if (S.tl) return S.tl;
@@ -315,6 +332,7 @@ function edit(fn, opts = {}) {
   const result = fn();
   if (result === false) return;
   tidySims(S.chart);
+  syncSlashes(S.chart);
   S.undo.push(before); if (S.undo.length > 300) S.undo.shift();
   S.redo = [];
   afterEdit(opts);
@@ -352,7 +370,7 @@ const KB = [
   ['|:', 'rstart', 'form p2', null, 'Repeat start'], [':|', 'rend', 'form p2', null, 'Repeat end'], ['×2', 'rtimes', 'form small p2', null, 'Times to play'],
   ['1.', 'ending', 'form p2', 1, '1st ending'], ['2.', 'ending', 'form p2', 2, '2nd ending'], ['3.', 'ending', 'form p2', 3, '3rd ending'],
   ['+bar', 'insbar', 'form small p2', null, 'Insert bar'], ['−bar', 'delbar', 'form small p2', null, 'Delete bar'], ['Dup', 'dupbar', 'form small p2', null, 'Duplicate bar'], ['%', 'sim', 'form p2', 'bar', SIM_NAMES.bar],
-  ['½ %', 'sim', 'form small p2 span2', 'half', SIM_NAMES.half], ['2 %', 'sim', 'form small p2 span2', 'two', SIM_NAMES.two],
+  ['/', 'beat', 'form small p2 span2', null, 'Repeat the chord on this beat (a beat slash)'], ['2 %', 'sim', 'form small p2 span2', 'two', SIM_NAMES.two],
   ['−½', 'tr', 'alt small p2', -1, 'Transpose down'], ['+½', 'tr', 'alt small p2', 1, 'Transpose up'],
   ['+ line', 'lineadd', 'alt small p2 span2', null, 'Add a line at the end'], ['− line', 'linedel', 'alt small p2 span2', null, 'Remove the last line (if empty)'],
   // both pages: moving, undo, hearing, and the page switch
@@ -376,7 +394,8 @@ function buildKeyboard() {
     b.className = 'key ' + (cls || '');
     b.textContent = label;
     // the repeat-sign keys show the signs themselves
-    if (action === 'sim') b.innerHTML = arg === 'two' ? SIM_SVG.two : (arg === 'half' ? '<span class="half">½</span>' : '') + SIM_SVG.one;
+    if (action === 'sim') b.innerHTML = arg === 'two' ? SIM_SVG.two : SIM_SVG.one;
+    if (action === 'beat') b.innerHTML = BEAT_SVG;
     b.dataset.k = idx;
     if (title) b.title = title; b.setAttribute('aria-label', title || label);
     kb.appendChild(b);
@@ -503,6 +522,7 @@ function keyAction(action, arg) {
     case 'rstart': case 'rend': case 'rtimes': case 'ending': formAction(action, arg); return;
     case 'insbar': case 'delbar': case 'dupbar': barAction(action); return;
     case 'sim': simAction(arg); return;
+    case 'beat': beatAction(); return;
   }
 }
 
@@ -533,7 +553,6 @@ function simAction(kind) {
   const bars = selBars(), targets = kind === 'two' ? [bars[0]] : bars;
   const off = targets.every((b) => (ch.marks[b] || {}).sim === kind);
   if (!off) {
-    if (kind === 'half' && ch.bpb % 2) { toast('A half-bar repeat needs an even number of beats in the bar'); return; }
     if (targets.some((b) => !simFits(ch, b, kind))) { toast(kind === 'two' ? 'A two-bar repeat needs two bars before it and a bar after' : 'No bar before this one to repeat'); return; }
   }
   edit(() => {
@@ -548,6 +567,14 @@ function simAction(kind) {
     });
   }, { audition: false });
   toast(off ? 'Repeat sign removed' : SIM_NAMES[kind]);
+}
+// beat slashes on the selected cells (each plays the chord before it again), or off
+function beatAction() {
+  const ch = S.chart, lo = selLo(), hi = selHi();
+  const off = Array.from({ length: hi - lo + 1 }, (_, k) => ch.cells[lo + k]).every((c) => c && c.rep);
+  if (!off && !playedCells(ch).slice(0, lo).some(Boolean)) { toast('No chord before this beat to repeat'); return; }
+  edit(() => { for (let i = lo; i <= hi; i++) ch.cells[i] = off ? null : slashMark(); }, { audition: false });
+  toast(off ? 'Beat slashes removed' : 'Beat slash: the chord before, again on this beat');
 }
 function barAction(action) {
   const bpb = S.chart.bpb, cells = S.chart.cells, b = Math.floor(S.sel.a / bpb), at = b * bpb;
@@ -650,7 +677,8 @@ function renderGrid() {
     if (col === 0 && !m.ending) inner += `<span class="barno">${barOf(i)}</span>`;
     const sg = signs[i];
     if (sg) inner += `<span class="sim sim-${sg.kind}" style="width:calc(${sg.w * 100}% - 4px)" title="${SIM_NAMES[sg.kind]}">${sg.kind === 'two' ? SIM_SVG.two : SIM_SVG.one}</span>`;
-    if (c) {
+    if (c && c.rep) inner += `<span class="beat" title="${esc(chordText(c))} again">${BEAT_SVG}</span>`;
+    else if (c) {
       let span = 1;
       while (col + span < ch.cpl && span < ch.bpb * 2 && !ch.cells[i + span] && !signs[i + span]) span++;
       inner += `<span class="ch${c.nc ? ' nc' : ''}" style="width:calc(${span * 100}% - 6px)" title="${esc(chordText(c))}">${chordHTML(c)}</span>`;
@@ -1087,13 +1115,19 @@ function previewType() {
 const capTok = (t) => t.replace(/^[a-g]/, (x) => x.toUpperCase()).replace(/\/([a-g])(?=[#b♯♭]?$)/, (m, x) => '/' + x.toUpperCase());
 function planText(v) {
   const bpb = S.chart.bpb;
-  const parse = (t) => (t === '.' ? null : t === '%' || t === '%%' ? t : parseChord(capTok(t)));
+  const parse = (t) => (t === '.' ? null : t === '%' || t === '%%' ? t : t === '/' ? slashMark() : parseChord(capTok(t)));
   if (!v.includes('|')) {
     const toks = splitTokens(v);
     if (toks.length === 1) {
       if (toks[0] === '.') return { clear: true };
       if (toks[0] === '%' || toks[0] === '%%') return { bars: [[toks[0]]] };
+      if (toks[0] === '/') return { beats: [slashMark()] };
       return { single: parseChord(capTok(toks[0])) };
+    }
+    // with beat slashes it's one bar: "C7 / /"
+    if (toks.includes('/') && !toks.includes('.')) {
+      if (toks.length > bpb) throw new Error(`${toks.length} items but only ${bpb} beats in a bar`);
+      return { bars: [toks.map(parse)] };
     }
     if (toks.includes('.')) {
       if (toks.some((x) => x.startsWith('%'))) throw new Error('"%" repeats a bar — use it between "|" bar lines');
@@ -1108,10 +1142,7 @@ function planText(v) {
     const toks = splitTokens(p).map(parse);
     if (toks.length > bpb) throw new Error(`Bar ${k + 1} has ${toks.length} items but only ${bpb} beats`);
     if (toks.includes('%%') && toks.length > 1) throw new Error(`"%%" (repeat two bars) must be on its own in bar ${k + 1}`);
-    const at = toks.indexOf('%');
-    if (at >= 0 && toks.length > 1 && !(toks.length === 2 && at === 1 && toks[0] && bpb % 2 === 0)) {
-      throw new Error(`In bar ${k + 1}, "%" goes on its own (repeat the bar before) or second of two ("C7 %": repeat the half bar)`);
-    }
+    if (toks.includes('%') && toks.length > 1) throw new Error(`"%" goes on its own in bar ${k + 1} (repeat the bar before) — use "/" for a beat: C7 / /`);
     return toks;
   });
   return { bars };
@@ -1120,7 +1151,16 @@ function placeBar(toks) {
   const bpb = S.chart.bpb, out = new Array(bpb).fill(null);
   if (!toks.length) return out;
   const explicit = toks.includes(null);
-  toks.forEach((c, j) => { const pos = explicit ? j : Math.floor((j * bpb) / toks.length); if (c) out[pos] = cloneChord(c); });
+  if (explicit) { toks.forEach((c, j) => { if (c && j < bpb) out[j] = c.rep ? slashMark() : cloneChord(c); }); return out; }
+  // a "/" takes one beat; the chords share the beats that are left ("C7 / /" in 4/4: C7 for two beats, then two slashes)
+  const slashes = toks.filter((c) => c.rep).length, chords = toks.length - slashes;
+  const each = chords ? Math.max(0, bpb - slashes) / chords : 0;
+  let at = 0;
+  for (const c of toks) {
+    const pos = Math.floor(at + 1e-9);
+    if (pos < bpb && !out[pos]) out[pos] = c.rep ? slashMark() : cloneChord(c);
+    at += c.rep ? 1 : each;
+  }
   return out;
 }
 function applyType() {
@@ -1133,7 +1173,7 @@ function applyType() {
   if (plan.single) { setSelChord(plan.single); toggleTypebar(false); return; }
   if (plan.beats) {
     const at = S.sel.a;
-    edit(() => { ensureLength(at + plan.beats.length); plan.beats.forEach((c, k) => { cells[at + k] = c ? cloneChord(c) : null; }); }, { audition: false });
+    edit(() => { ensureLength(at + plan.beats.length); plan.beats.forEach((c, k) => { cells[at + k] = c ? (c.rep ? slashMark() : cloneChord(c)) : null; }); }, { audition: false });
     setSel(at, at + plan.beats.length - 1);
     toggleTypebar(false); return;
   }
@@ -1150,10 +1190,7 @@ function applyType() {
       const m = markOf(b); delete m.sim;
       if (toks[0] === '%' && toks.length === 1) m.sim = 'bar';
       else if (toks[0] === '%%') { m.sim = 'two'; if (S.chart.marks[b + 1]) delete S.chart.marks[b + 1].sim; }
-      else if (toks[1] === '%') m.sim = 'half';
-      const placed = m.sim === 'bar' || m.sim === 'two' ? new Array(bpb * (m.sim === 'two' ? 2 : 1)).fill(null)
-        : m.sim === 'half' ? placeBar([toks[0], ...new Array(bpb / 2 - 1).fill(null)]).map((c, j) => (j < bpb / 2 ? c : null))
-        : placeBar(toks);
+      const placed = m.sim === 'bar' || m.sim === 'two' ? new Array(bpb * (m.sim === 'two' ? 2 : 1)).fill(null) : placeBar(toks);
       placed.forEach((c, j) => { cells[b * bpb + j] = c; });
       b += m.sim === 'two' ? 2 : 1;
     });

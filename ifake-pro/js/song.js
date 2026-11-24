@@ -122,7 +122,14 @@ export function fillChords(meas, cells) {
   const beats = meas.ch.length;
   meas.ch = meas.ch.map(() => null); delete meas.div; delete meas.sub;
   const explicit = cells.some((c) => c === null || (c && c.items));
-  if (!explicit) { cells.forEach((c, j) => { const b = Math.floor((j * beats) / cells.length); if (c && b < beats && !meas.ch[b]) meas.ch[b] = c; }); return; }
+  if (!explicit) {
+    // a "/" takes one beat; the chords share the beats that are left ("C7 / /" in 4/4: C7 for two beats, two slashes)
+    const slashes = cells.filter((c) => c && c.rep).length, chords = cells.length - slashes;
+    const each = chords ? Math.max(0, beats - slashes) / chords : 0;
+    let at = 0;
+    for (const c of cells) { const b = Math.floor(at + 1e-9); if (c && b < beats && !meas.ch[b]) meas.ch[b] = c; at += c && c.rep ? 1 : each; }
+    return;
+  }
   let b = 0;
   for (const c of cells) {
     if (b >= beats) break;
@@ -150,18 +157,16 @@ export function playOrder(song, lo = null, hi = null) {
 }
 
 // ---------- repeat signs (simile, "%") ----------
-// marks[m].sim: 'bar' = bar m plays the bar before; 'half' = its second half plays its first half; 'two' = bars
-// m and m+1 play the two bars before. Chords under a sign aren't kept (writing one there takes the sign off).
+// marks[m].sim: 'bar' = bar m plays the bar before; 'two' = bars m and m+1 play the two bars before. Chords under
+// a sign aren't kept (writing one there takes the sign off). A single beat is repeated with a beat slash ("/").
 export function simFits(song, m, sim) {
   const M = song.measures, full = barTicks(song);
   if (!M[m]) return false;
-  if (sim === 'half') return M[m].len === full && song.time.num % 2 === 0;
   if (sim === 'two') return m >= 2 && m + 1 < M.length && [m - 2, m - 1, m, m + 1].every((k) => M[k].len === full);
-  return m >= 1 && M[m - 1].len === M[m].len;
+  return sim === 'bar' && m >= 1 && M[m - 1].len === M[m].len;
 }
 // the bars and beats a sign covers: [{ m, from }] (from = first beat covered)
 export function simCover(song, m, sim) {
-  if (sim === 'half') return [{ m, from: song.time.num / 2 }];
   return sim === 'two' ? [{ m, from: 0 }, { m: m + 1, from: 0 }] : [{ m, from: 0 }];
 }
 // empty the beats under a sign (chords, and beat divisions there)
@@ -215,7 +220,6 @@ export function playedMeasures(song) {
     const sim = ((song.marks || {})[m] || {}).sim;
     if (!sim || !simFits(song, m, sim)) return;
     const n = meas.ch.length;
-    if (sim === 'half') { const h = n / 2; copyBeats(meas, meas, h, 0, h); if (!meas.ch[h]) meas.ch[h] = soundingAt(m, 0); return; }
     const back = sim === 'two' ? 2 : 1;
     for (let j = 0; j < back; j++) copyBeats(out[m + j], out[m - back + j], 0, 0, n);
     if (!meas.ch[0]) meas.ch[0] = soundingAt(m - back, 0);
@@ -223,8 +227,31 @@ export function playedMeasures(song) {
   return out;
 }
 
+// ---------- beat slashes ("/") ----------
+// A beat slash is one beat (or slot) of the chord before it, played again. The slot holds a copy of that chord
+// marked rep (repOf = the chord it copied, as text); after every edit the copies follow the chord before them,
+// and one changed by hand (it no longer matches repOf) becomes an ordinary chord.
+export const slashMark = () => Object.assign(parseChord('C'), { rep: true, repOf: null });
+export function syncSlashes(song) {
+  const played = playedMeasures(song);
+  song.measures.forEach((meas, m) => slotList(meas).forEach((x) => {
+    const c = x.chord;
+    if (!c || !c.rep) return;
+    if (c.repOf != null && chordText(c) !== c.repOf) { delete c.rep; delete c.repOf; return; }   // changed by hand
+    let src = null;
+    for (let k = m; k >= 0 && !src; k--) {
+      const before = slotList(played[k]).filter((y) => y.chord && (k < m || y.pos < x.pos - 1e-9));
+      for (let j = before.length - 1; j >= 0 && !src; j--) if (before[j].chord !== c) src = before[j].chord;
+    }
+    if (!src || src.nc) { setSlot(meas, x.b, x.k, null); return; }
+    for (const key of Object.keys(c)) delete c[key];
+    Object.assign(c, JSON.parse(JSON.stringify(src)), { rep: true });
+    c.repOf = chordText(c);
+  }));
+}
+
 // ---------- text format ----------
-const cellText = (c) => (c ? chordText(c).replace(/,\s+/g, ',') : '.');
+const cellText = (c) => (c ? (c.rep ? '/' : chordText(c).replace(/,\s+/g, ',')) : '.');
 export function barChordText(meas) {
   const out = [];
   for (let b = 0; b < meas.ch.length; b++) {
@@ -245,9 +272,7 @@ export function songToText(song) {
   song.measures.forEach((meas, m) => {
     const mk = song.marks[m] || {};
     const under = ((song.marks[m - 1] || {}).sim === 'two'), n = meas.ch.length;
-    const body = mk.sim === 'bar' ? '%' : mk.sim === 'two' ? '%%' : under ? new Array(n).fill('.').join(' ')
-      : mk.sim === 'half' ? [barChordText({ ...meas, ch: meas.ch.slice(0, n / 2) }), '%', ...new Array(n / 2 - 1).fill('.')].filter(Boolean).join(' ')
-      : barChordText(meas);
+    const body = mk.sim === 'bar' ? '%' : mk.sim === 'two' ? '%%' : under ? new Array(n).fill('.').join(' ') : barChordText(meas);
     line += (mk.start ? '{ ' : closed ? '' : '| ') + (mk.ending ? `N${mk.ending} ` : '') + body + ' ';
     closed = !!mk.end;
     if (mk.end) line += (mk.end > 2 ? `}x${mk.end}` : '}') + ' ';
@@ -260,7 +285,7 @@ export function songToText(song) {
 }
 
 // Chords section: bars split by "|", "{" (repeat start) and "}" / "}x3" (repeat end); "N1".."N3" endings;
-// one token per beat ("." = no new chord). A beat can hold a group: [C F] (halves), [C D E] (8th-note
+// one token per beat ("." = no new chord, "/" = the chord before again); "%" / "%%" alone in a bar = repeat signs. A beat can hold a group: [C F] (halves), [C D E] (8th-note
 // triplet), [C . F .] (quarters of the beat), 2[C D E] (quarter-note triplet over two beats). Also reads
 // Chord Pad's export.
 export function parseChordBars(text) {
@@ -280,7 +305,7 @@ export function parseChordBars(text) {
   const joined = []; let buf = '';
   for (const t of toks) { buf = buf ? buf + ' ' + t : t; if ((buf.match(/\(/g) || []).length === (buf.match(/\)/g) || []).length) { joined.push(buf); buf = ''; } }
   let group = null;
-  const tok = (t) => (t === '.' ? null : parseChord(t));
+  const tok = (t) => (t === '.' ? null : t === '/' ? slashMark() : parseChord(t));
   for (const t0 of joined) {
     let t = t0, m;
     if (group) {
@@ -304,8 +329,8 @@ export function parseChordBars(text) {
     if ((m = /^\}(?:x(\d+))?$/.exec(t))) { if (cur) { cur.mark.end = m[1] ? +m[1] : 2; close(); } continue; }
     if ((m = /^N([1-3])$/.exec(t))) { open(); cur.mark.ending = +m[1]; continue; }
     open();
-    if (t === '%' || t === '%%') { cur.mark.sim = t === '%%' ? 'two' : cur.cells.length ? 'half' : 'bar'; if (cur.mark.sim === 'half') cur.cells.push(null); continue; }
-    cur.cells.push(t === '.' ? null : parseChord(t));
+    if ((t === '%' || t === '%%') && !cur.cells.length) { cur.mark.sim = t === '%%' ? 'two' : 'bar'; continue; }
+    cur.cells.push(tok(t === '%' ? '/' : t));
   }
   close();
   return bars.filter((b) => b.cells.length || b.mark.start || b.mark.end || b.mark.ending || b.mark.sim);
@@ -343,6 +368,7 @@ export function songFromText(text) {
     song.measures.push(meas);
   }
   if (mbars.length) setMelody(song, mbars, 0);
+  tidySims(song); syncSlashes(song);
   return song;
 }
 
@@ -358,9 +384,10 @@ export function serialiseSong(song) {
     }),
   };
 }
-const chordStore = (c) => (c ? chordText(c) + (c.auto7 ? '~' : '') : '');
+const chordStore = (c) => (c ? (c.rep ? '/' : chordText(c) + (c.auto7 ? '~' : '')) : '');
 const chordLoad = (t) => {
   if (!t) return null;
+  if (t === '/') return slashMark();
   try { const auto = t.endsWith('~'); const c = parseChord(auto ? t.slice(0, -1) : t); if (auto) c.auto7 = true; return c; } catch (e) { return null; }
 };
 export function deserialiseSong(o) {
@@ -378,6 +405,7 @@ export function deserialiseSong(o) {
     try { if (b.n) setMelody(song, parseMelody(b.n, song), k); } catch (e) { meas.ev = restsFor(0, meas.len, true); }
   });
   if (!song.measures.length) song.measures.push(emptyMeasure(barTicks(song), song.time.num));
+  tidySims(song); syncSlashes(song);
   return song;
 }
 export { TPQ };

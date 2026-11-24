@@ -37,6 +37,15 @@ function simSign(parent, x, y, kind, s = 1) {
   parent.appendChild(g);
   return g;
 }
+// a beat slash in the chord row, centred on (x, y)
+function beatSlash(parent, x, y) {
+  const g = document.createElementNS(SVGNS, 'g');
+  g.setAttribute('class', 'chord-sym chord-sim');
+  g.setAttribute('transform', `translate(${x - 5} ${y - 10}) scale(0.85)`);
+  g.innerHTML = '<path d="M1.5 22.5h3.4L10.5 1.5H7.1z"/>';
+  parent.appendChild(g);
+  return g;
+}
 function svgPath(parent, d, cls) {
   const p = document.createElementNS(SVGNS, 'path');
   p.setAttribute('d', d);
@@ -258,13 +267,16 @@ export function renderScore(el, song, opts) {
       };
       if (opts.chordsVisible !== false) {
         const cy = topY - 34;
-        for (const q of slots) if (q.chord) svgText(svg, xAt(q.pos * TPB) - 2, cy, chordParts(q.chord), 'chord-sym').dataset.cell = q.k ? `${m}:${q.b}:${q.k}` : `${m}:${q.b}`;
+        for (const q of slots) {
+          if (!q.chord) continue;
+          const el = q.chord.rep ? beatSlash(svg, xAt(q.pos * TPB) + 4, cy - 7) : svgText(svg, xAt(q.pos * TPB) - 2, cy, chordParts(q.chord), 'chord-sym');
+          el.dataset.cell = q.k ? `${m}:${q.b}:${q.k}` : `${m}:${q.b}`;
+        }
         // a repeat sign over the bar (half bar; two bars: over the bar line between them)
         const sim = ((song.marks || {})[m] || {}).sim;
-        if (sim) {
-          const half = sim === 'half', two = sim === 'two', end = stave.getNoteEndX();
-          const cx = half ? (xAt((B.beats / 2) * TPB) + end) / 2 : two && k < ms.length - 1 ? x + w : (startX + end) / 2;
-          simSign(svg, cx, cy - 7, two ? 'two' : 'one', half ? 0.75 : 1);
+        if (sim === 'bar' || sim === 'two') {
+          const two = sim === 'two', end = stave.getNoteEndX();
+          simSign(svg, two && k < ms.length - 1 ? x + w : (startX + end) / 2, cy - 7, two ? 'two' : 'one');
         }
       }
       x += w;
