@@ -1,8 +1,8 @@
 // Offline cache for the GitHub Pages build (not used inside claude.ai).
 // tools/stamp.py fills in BUILD, CORE, SAMPLES_BUILD and SAMPLE_DEFAULTS; run it before every push.
 const APP = 'leadsheet';
-const BUILD = 'be9e2539ad';
-const CORE = [ "./", "index.html", "css/app.css?v=8b6ef38ddf", "js/app.js?v=73c10f8cc0", "js/audio.js?v=e46c49cd69", "js/chords.js?v=5fb7131653", "js/demo.js?v=ed6d17c3be", "js/form.js?v=8150dd6c2c", "js/grid.js?v=42e483ade6", "js/melody.js?v=1ba4a73c6a", "js/recognise.js?v=5eeb49e05a", "js/score.js?v=4076caa61f", "js/song.js?v=d08e91fea2", "js/store.js?v=4769d0f668", "js/voicing.js?v=e6563af0b1", "lib/vexflow.js?v=139e0c4686", "manifest.webmanifest", "samples/index.json", "icons/icon-180.png", "icons/icon-192.png" ];
+const BUILD = 'ee619ee81d';
+const CORE = [ "./", "index.html", "css/app.css?v=fefb497427", "js/app.js?v=a458bb25a8", "js/audio.js?v=e46c49cd69", "js/chords.js?v=5fb7131653", "js/demo.js?v=ed6d17c3be", "js/form.js?v=8150dd6c2c", "js/grid.js?v=42e483ade6", "js/melody.js?v=1ba4a73c6a", "js/recognise.js?v=5eeb49e05a", "js/score.js?v=4076caa61f", "js/song.js?v=d08e91fea2", "js/store.js?v=4769d0f668", "js/voicing.js?v=e6563af0b1", "lib/vexflow.js?v=139e0c4686", "manifest.webmanifest", "samples/index.json", "icons/icon-180.png", "icons/icon-192.png" ];
 const SAMPLES_BUILD = '4b4116234b';
 const SAMPLE_DEFAULTS = ["samples/piano.json", "samples/upbass.json"];
 const CODE = APP + '-code-' + BUILD, SAMPLES = APP + '-samples-' + SAMPLES_BUILD;

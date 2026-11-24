@@ -483,30 +483,32 @@ function cssHeight(v) {
 }
 // how tall the status-bar band is (0 in Safari or inside another app)
 const safeTop = () => cssHeight('env(safe-area-inset-top)');
-// the height the app really has. A Home Screen app on iOS can report its height without the status bar while
-// the page starts underneath it, leaving a status-bar-tall strip at the bottom; 100vh (or the screen) is right
-function appHeight() {
-  const h = window.innerHeight;
-  if (!standalone()) return h;
-  const land = matchMedia('(orientation: landscape)').matches;
-  const tall = land ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
-  const gap = tall - h;
-  return Math.round(Math.max(h, cssHeight('100vh'), gap > 0 && gap <= safeTop() + 6 ? tall : 0));
+// the whole screen's height. iOS can shrink a Home Screen app's page (innerHeight) and leave a dead black
+// strip at the bottom that nothing can draw into; 100vh still measures the whole screen
+const screenHeight = () => (standalone() ? Math.max(window.innerHeight, Math.round(cssHeight('100vh'))) : window.innerHeight);
+// …and the usual cure: hide the full-height app and show it again, which makes WebKit measure the page again
+let healing = false;
+function healViewport() {
+  if (healing || !standalone() || screenHeight() - window.innerHeight <= 4) return;
+  healing = true;
+  const el = $('#app'), keep = [...document.querySelectorAll('#score-wrap, #chart-wrap, #panel')].map((s) => [s, s.scrollTop]);
+  el.style.display = 'none'; void el.offsetHeight; el.style.display = '';
+  keep.forEach(([s, y]) => { s.scrollTop = y; });
+  setTimeout(() => { healing = false; applySplit(); render(); }, 60);
 }
 function applySplit() {
   const mode = S.settings.split || 'auto', sg = foldSegments();
   let on = mode === 'on' || (mode === 'auto' && (!!sg || foldableScreen()));
   const root = document.documentElement.style;
   const adj = S.settings.foldAdjust || 0;
-  const appH = appHeight();
-  root.setProperty('--app-h', appH + 'px');
+  // the app fills what can be drawn (a stuck-short page leaves the strip below it black)
+  const h = window.innerHeight;
+  root.setProperty('--app-h', h + 'px');
   if (on && standalone()) {
-    // a Home Screen app: the line stays put on the screen whether the phone is folded or flat, so the fold
-    // reported while folded is only used to switch the split on
-    const h = appH, land = matchMedia('(orientation: landscape)').matches;
-    const tall = land ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
-    const mid = Math.abs(tall - h) < 140 ? Math.round(tall / 2) : Math.round(h / 2);
-    const top = Math.max(150, Math.min(h - 150, mid + adj));
+    // a Home Screen app: the line is placed on the screen (its middle plus your offset), so it stays put
+    // whether the phone is folded or flat and whether or not iOS has shrunk the page; the fold reported
+    // while folded only switches the split on
+    const top = Math.max(150, Math.min(h - 150, Math.round(screenHeight() / 2) + adj));
     root.setProperty('--seg0', top + 'px'); root.setProperty('--hinge', '0px'); root.setProperty('--seg1', h - top + 'px');
   } else if (on && sg && mode !== 'off') {
     const a = Math.max(150 - sg[0].height, Math.min(sg[1].height - 150, adj));
@@ -1912,7 +1914,10 @@ function bindGlobal() {
   });
   let rt = null;
   window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { applySplit(); render(); }, 150); });
-  try { if (navigator.devicePosture) navigator.devicePosture.addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
+  try { if (navigator.devicePosture) navigator.devicePosture.addEventListener('change', () => { applySplit(); render(); setTimeout(healViewport, 400); }); } catch (e) { /* none */ }
+  setTimeout(healViewport, 600);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(healViewport, 300); });
+  document.addEventListener('focusout', (e) => { if (e.target.matches && e.target.matches('input, textarea')) setTimeout(healViewport, 140); });
   // fold changes (iPhone Duo): posture and segment changes also re-lay the page out
   try { if (navigator.devicePosture) navigator.devicePosture.addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
   try { matchMedia('(vertical-viewport-segments: 2)').addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }

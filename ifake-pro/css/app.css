@@ -507,8 +507,8 @@ label.btn.file { display: inline-flex; align-items: center; cursor: pointer; }
 body.split .sheet { align-items: flex-start; }
 body.split .sheet-card { max-height: calc(var(--seg0) - 8px); margin-top: env(safe-area-inset-top); border-radius: 0 0 14px 14px; }
 
-/* split view fills the whole screen: iOS reports a Home Screen app's height without the status bar while the
-   page starts under it, which left a status-bar-tall gap at the bottom; --app-h is measured in applySplit */
+/* split view fills the drawable page (--app-h, set in applySplit); if iOS has shrunk a Home Screen app's page
+   the strip below can't be drawn into, so nothing is put there (the app re-measures the page to win it back) */
 body.split #app { position: fixed; top: 0; left: 0; right: 0; bottom: auto; height: var(--app-h, 100dvh); }
 /* the Duo's tall status-bar band: iOS keeps taps there for itself, so only the song title sits in it
    (left of the status icons); ☰ goes left of the tabs, Even and ⚙ to their right */
