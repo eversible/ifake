@@ -49,6 +49,12 @@ if sw_path.exists():
     sw = sw_path.read_text()
     sw = re.sub(r"const BUILD = '[^']*';", f"const BUILD = '{build}';", sw)
     sw = re.sub(r"const CORE = \[.*?\];", 'const CORE = ' + json.dumps(core, indent=0).replace('\n', ' ') + ';', sw, flags=re.S)
+    # the instruments: their cache is named after the sample set, and the default ones are fetched at install
+    idx = ROOT / 'samples/index.json'
+    sb = hashlib.sha1(idx.read_bytes()).hexdigest()[:10] if idx.exists() else 'none'
+    defaults = [f'samples/{n}.json' for n in ('piano', 'upbass') if (ROOT / f'samples/{n}.json').exists()]
+    sw = re.sub(r"const SAMPLES_BUILD = '[^']*';", f"const SAMPLES_BUILD = '{sb}';", sw)
+    sw = re.sub(r"const SAMPLE_DEFAULTS = \[.*?\];", 'const SAMPLE_DEFAULTS = ' + json.dumps(defaults) + ';', sw, flags=re.S)
     sw_path.write_text(sw)
 
 print('stamped', len(imports), 'modules' + (f'; sw build {build}, {len(core)} files' if sw_path.exists() else ''))

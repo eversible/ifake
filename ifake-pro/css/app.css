@@ -34,7 +34,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 #topbar {
   display: flex; align-items: center; gap: 4px; padding: 6px 8px; background: var(--kb-bg); color: var(--key-text);
 }
-.tb { min-width: 38px; height: 36px; border-radius: 8px; font-size: 19px; background: var(--key-alt); }
+.tb { min-width: 40px; height: 40px; border-radius: 8px; font-size: 19px; background: var(--key-alt); }
 #title { flex: 1; min-width: 0; font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
 
 /* chart */
@@ -63,8 +63,14 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   content: ""; position: absolute; left: 6px; top: 6px; width: 14px; height: 14px; border-radius: 50%;
   background: #0a84ff; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); box-sizing: border-box;
 }
-.ch.cut .x, .ch.cut .b { display: none; }
-.ch.cut::after { content: "…"; font-size: 0.85em; position: relative; top: -0.45em; margin-left: 1px; color: #3b362c; }
+.ch .l1, .ch .l2 { display: contents; }
+/* a crowded symbol: root and quality on top, extensions and bass underneath */
+.ch.two { flex-direction: column; align-items: flex-start; justify-content: center; }
+.ch.two .l1, .ch.two .l2 { display: flex; align-items: baseline; white-space: nowrap; }
+.ch.two .l2 { margin-top: 0.05em; }
+.ch.two .x { top: 0; font-size: 0.8em; margin-left: 0; }
+.ch.two .b { font-size: 0.85em; }
+.ch.cut .x { display: none; }                      /* last resort: extensions hide; the bass never does */
 .ch {
   position: absolute; left: 3px; top: 0; bottom: 0; z-index: 2; pointer-events: none;
   display: flex; align-items: center; white-space: nowrap; overflow: hidden;
@@ -123,7 +129,7 @@ body.typing #keyboard, body.typing #transport { display: none; }
 #loop-chip .lc-main { font: 600 15px var(--ui-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #loop-chip .lc-sub { font-size: 11px; color: #a1a1a6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #tempo { display: flex; align-items: center; gap: 3px; }
-#tempo-down, #tempo-up { height: 48px; min-width: 36px; border-radius: 10px; background: #2c2c2e; font-size: 22px; touch-action: none; }
+#tempo-down, #tempo-up { height: 48px; min-width: 40px; flex-shrink: 0; border-radius: 10px; background: #2c2c2e; font-size: 22px; touch-action: none; }
 #bpm {
   height: 48px; min-width: 50px; border-radius: 10px; background: #3a3a3c; display: flex; flex-direction: column;
   align-items: center; justify-content: center; line-height: 1; font: 600 18px var(--ui-font); touch-action: none;
@@ -188,7 +194,7 @@ body.typing #keyboard, body.typing #transport { display: none; }
 .chart-item { display: flex; align-items: center; gap: 8px; min-height: 48px; border-bottom: 1px solid #e5e5ea; }
 .chart-item .name { flex: 1; font-size: 16px; }
 .chart-item.current .name { font-weight: 700; }
-.chart-item button { font-size: 13px; padding: 6px 9px; border-radius: 7px; background: #e5e5ea; }
+.chart-item button { font-size: 14px; min-height: 38px; padding: 8px 12px; border-radius: 8px; background: #e5e5ea; }
 textarea.io { width: 100%; min-height: 120px; font: 13px ui-monospace, Menlo, monospace; border-radius: 8px; border: 1px solid #d1d1d6; padding: 8px; }
 .hint { font-size: 12px; color: #6e6e73; margin: 6px 0; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
@@ -264,7 +270,7 @@ path.vmk { fill: none; stroke: #1d1b16; stroke-width: 1.3; }
 #info-sub { font-size: 12px; color: #c7c7cc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 
 #tabs { display: flex; gap: 0; margin: 4px 8px 0; background: #2c2c2e; border-radius: 9px; padding: 2px; }
-#tabs button { flex: 1; height: 30px; border-radius: 7px; color: #c7c7cc; font: 600 13px var(--ui-font); }
+#tabs button { flex: 1; height: 36px; border-radius: 7px; color: #c7c7cc; font: 600 13px var(--ui-font); }
 #tabs button.on { background: #636366; color: #fff; }
 #panel { background: var(--kb-bg); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 5px; }
 .krow { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 5px; }
@@ -300,14 +306,16 @@ body.typing #panel, body.typing #tabs { display: none; }
 /* chords mode: Chord Pad-style cells over a faded score */
 #chordgrid { position: absolute; left: 0; top: 0; right: 0; pointer-events: none; display: none; }
 #score-wrap.chords-mode #chordgrid { display: block; }
-#score-wrap.chords-mode #score svg { opacity: 0.2; }
+#score-wrap.chords-mode #score svg { opacity: 0.14; }
 #score-wrap.chords-mode .chord-sym, #score-wrap.chords-mode .vmk, #score-wrap.chords-mode .mnum { display: none; }
 #chordgrid .cell { position: absolute; height: auto; touch-action: auto; box-sizing: border-box; --halo: #fffdf8; }
 #chordgrid .cell.sel { --halo: var(--sel); }
 #chordgrid .cell.playing { --halo: #d3f3e6; }
+#chordgrid .cell.selbar:not(.sel) { background: rgba(255, 196, 0, 0.1); }
+#chordgrid .cell.playbar:not(.playing) { background: rgba(123, 220, 181, 0.16); }
 #chordgrid .cell.lp:not(.sel):not(.playing) { --halo: #e4f0ff; }
 #chordgrid .ch { left: 4px; text-shadow: 0 0 2px var(--halo), 0 0 4px var(--halo), 0 0 7px var(--halo); }
-#chordgrid .cell.rep-start .ch { left: 10px; }
+#chordgrid .cell.rep-start .ch { left: 14px; }
 #chordgrid .volta { top: -14px; }
 #chordgrid .barno { top: -14px; }
 
@@ -343,39 +351,41 @@ body.split #typebar { grid-area: transport; z-index: 3; }
 body.split #transport { grid-area: transport; padding: 5px 6px; }
 body.split #loop-chip, body.split #tempo-down, body.split #tempo-up, body.split #bpm, body.split #btn-play { height: 42px; }
 body.split #tabs { grid-area: tabs; margin: 3px 4px 0; }
+body.split #tabs button { height: 32px; }
+body.split #score-wrap { padding-bottom: 56px; }   /* the last line can scroll clear of the fold */
 body.split #panel { grid-area: kb; overflow-y: auto; margin-top: 0; padding: 4px 4px 2px; gap: 4px; }
 body.split #panel .krow { gap: 4px; }
 body.split #panel .krow.divrow { flex: 0 0 auto; }
-body.split #panel .key.div { height: 24px; }
+body.split #panel .key.div { height: 30px; }
 body.split #panel .key { height: auto; min-height: 22px; }
 body.split #panel .krow { flex: 1; }
 body.split #panel #piano-strip { display: none; }             /* the big piano replaces it */
 body.split #bigpiano { grid-area: piano; display: flex; }
 #bigpiano[hidden] { display: none !important; }
-#bigpiano { flex-direction: column; background: var(--kb-bg); padding: 6px 6px 0 6px; gap: 4px; min-height: 0; }
-#bigpiano .bp-bar { display: flex; align-items: center; gap: 6px; height: 28px; color: #c7c7cc; font-size: 13px; }
-#bigpiano .bp-bar button { height: 28px; min-width: 40px; border-radius: 7px; background: var(--key-alt); color: var(--key-text); font-size: 14px; }
-#bigpiano .bp-name { flex: 1; min-width: 0; background: none !important; text-align: center; font: 600 16px var(--chord-font); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#bigpiano .bp-mode { display: flex; background: var(--key-alt); border-radius: 8px; padding: 2px; gap: 2px; }
-#bigpiano .bp-mode button { height: 24px; min-width: 52px; background: none; color: #c7c7cc; font-size: 13px; border-radius: 6px; }
-#bigpiano .bp-mode button.on { background: #636366; color: #fff; }
-#bigpiano.draft .bp-mode button.on { background: #ff9f0a; color: #1c1c1e; }
+#bigpiano { position: relative; flex-direction: column; background: var(--kb-bg); padding: 6px 6px 0 6px; gap: 5px; min-height: 0; }
+#bigpiano .bp-bar { display: flex; align-items: center; gap: 6px; height: 40px; flex: 0 0 auto; color: #c7c7cc; font-size: 14px; }
+#bigpiano .bp-bar button { height: 40px; min-width: 44px; border-radius: 9px; background: var(--key-alt); color: var(--key-text); font-size: 16px; padding: 0 10px; }
+#bigpiano .bp-bar .bp-oct { font-size: 22px; min-width: 44px; padding: 0; }
+#bigpiano .bp-bar .bp-more { font-size: 20px; }
+#bigpiano .bp-name { flex: 1; min-width: 0; background: none !important; text-align: center; font: 600 20px var(--chord-font); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#bigpiano .bp-mode { display: flex; background: var(--key-alt); border-radius: 10px; padding: 2px; gap: 2px; height: 40px; box-sizing: border-box; }
+#bigpiano .bp-mode button { height: 36px; min-width: 58px; background: none; color: #c7c7cc; font-size: 15px; border-radius: 8px; }
+#bigpiano .bp-mode button.on { background: #e5e5ea; color: #1c1c1e; font-weight: 600; }
 #bigpiano .bp-bar button[hidden] { display: none; }
 #bigpiano .bp-bar button:not(.bp-name):disabled { opacity: 0.4; }
 #bigpiano .bp-write.ready { background: #0a84ff; color: #fff; font-weight: 600; }
-#bigpiano .bp-latch.on { background: #ff9f0a; color: #1c1c1e; font-weight: 600; }
-#bigpiano .bp-follow.on { background: #0a84ff; color: #fff; font-weight: 600; }
-#bigpiano .bp-name.none { color: #8e8e93; font: 13px var(--ui-font); }
+#bigpiano .bp-name.none { color: #8e8e93; font: 14px var(--ui-font); }
 #bigpiano .bp-keys { position: relative; flex: 1; min-height: 0; touch-action: none; }
 #bigpiano .pk { position: absolute; top: 0; box-sizing: border-box; border-radius: 0 0 6px 6px; }
 #bigpiano .pk.w { height: 100%; background: #f4f1ea; border: 1px solid #1c1c1e; color: #8e8e93; font: 11px var(--ui-font);
   display: flex; align-items: flex-end; justify-content: center; padding-bottom: 5px; }
 #bigpiano .pk.b { height: 60%; background: #2c2c2e; border: 1px solid #000; z-index: 2; }
-#bigpiano .pk.on.w { background: #7fb2ff; color: #fff; }
-#bigpiano .pk.on.b { background: #0a84ff; }
-#bigpiano .pk.play.w { background: #7bdcb5; }
-#bigpiano .pk.play.b { background: #30b07f; }
-#bigpiano .pk.on.play.w { background: #5bc8a0; }
+#bigpiano .pk.on.w, #bigpiano .pk.on.b { background: #3d8bfd; color: #fff; }
+#bigpiano .pk.on.root.w, #bigpiano .pk.on.root.b { background: #0a5fd6; }
+#bigpiano .pk.on.root::after { content: ''; position: absolute; left: 50%; bottom: 26px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #fff; }
+#bigpiano .pk.on.root.b::after { bottom: 10px; }
+#bigpiano .pk.play.w { background: #34c759; color: #fff; }
+#bigpiano .pk.play.b { background: #1f8f3f; }
 #bigpiano .pk.down { filter: brightness(0.85); }
 /* aligning the split with the hinge */
 #foldline { position: fixed; left: 0; right: 0; top: calc(var(--seg0) + var(--hinge) - 22px); height: 44px; z-index: 60; touch-action: none;
@@ -419,7 +429,6 @@ body.split #swing-chip { height: 42px; }
   #loop-chip .lc-icon { display: none; }
   #swing-chip { min-width: 50px; padding: 0 4px; }
   #swing-chip .sw-main { font-size: 12px; }
-  #tempo-down, #tempo-up { min-width: 32px; }
   #btn-play { width: 58px; }
 }
 
@@ -438,7 +447,6 @@ body.split #mel-chip { height: 42px; }
   #mel-chip .mc-main { font-size: 12px; }
   #transport { gap: 4px; }
   #loop-chip .lc-main { font-size: 14px; }
-  #tempo-down, #tempo-up { min-width: 28px; }
   #btn-play { width: 52px; }
 }
 /* while playing (or paused) the keys show only what's playing: the chord a strong green, the melody orange */
@@ -461,3 +469,40 @@ body.split #mel-chip { height: 42px; }
   #mix .mc-main, #mix .sw-main { font-size: 12px; }
   #mel-chip:not(.on) .mc-main { text-decoration: line-through; }
 }
+
+/* a new version is ready (Home Screen apps don't reload by themselves) */
+#update-bar { position: fixed; top: calc(env(safe-area-inset-top) + 8px); left: 50%; transform: translateX(-50%); z-index: 90;
+  background: #0a84ff; color: #fff; border: 0; border-radius: 20px; padding: 10px 18px; font: 600 15px -apple-system, BlinkMacSystemFont, sans-serif;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); }
+
+/* the ⋯ menu above the piano bar */
+#bigpiano .bp-menu { position: absolute; right: 6px; bottom: calc(100% - 4px); z-index: 30; display: flex; flex-direction: column; gap: 2px;
+  min-width: 250px; padding: 6px; background: #2c2c2e; border-radius: 14px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); }
+#bigpiano .bp-menu[hidden] { display: none; }
+#bigpiano .bp-menu button { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 44px; padding: 0 12px;
+  border-radius: 9px; background: none; color: #f2f2f7; font-size: 16px; text-align: left; }
+#bigpiano .bp-menu button[hidden] { display: none; }
+#bigpiano .bp-menu button:active { background: #3a3a3c; }
+#bigpiano .bp-sw i { flex: 0 0 auto; width: 42px; height: 26px; border-radius: 13px; background: #48484a; position: relative; transition: background 0.15s; }
+#bigpiano .bp-sw i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+#bigpiano .bp-sw.on i { background: #0a84ff; }
+#bigpiano .bp-sw.on i::after { left: 19px; }
+/* the piano bar's ‹ › move the keyboard, so the panel's own −oct / +oct go in split view */
+body.split #panel .key[data-action="pianoShift"] { display: none; }
+body.split #panel .krow.oct-row { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+/* Bars tab: its few rows needn't stretch; the piano takes the room */
+body.split[data-layer="bars"] #app { grid-template-rows: calc(var(--seg0) - env(safe-area-inset-top)) var(--hinge) 52px 38px minmax(0, auto) minmax(var(--piano-h), 1fr); }
+body.split[data-layer="bars"] #panel .krow { flex: 0 0 auto; }
+body.split[data-layer="bars"] #panel .key { min-height: 44px; max-height: 52px; }
+
+/* Songs sheet: Delete in red; folded sections */
+.chart-item button.del { color: #ff3b30; }
+.chart-item[data-confirm="1"] button.del { background: #ff3b30; color: #fff; }
+details.more > summary { cursor: pointer; font-weight: 600; font-size: 15px; padding: 10px 0; color: var(--accent); list-style: none; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::after { content: ' ›'; }
+details.more[open] > summary::after { content: ' ⌄'; }
+label.btn.file { display: inline-flex; align-items: center; cursor: pointer; }
+/* on the Duo, sheets stay in the top half (the upright screen) */
+body.split .sheet { align-items: flex-start; }
+body.split .sheet-card { max-height: calc(var(--seg0) - 8px); margin-top: env(safe-area-inset-top); border-radius: 0 0 14px 14px; }

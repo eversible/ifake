@@ -50,6 +50,7 @@ export function setSlot(meas, b, k, c) {
   if (k === 0) { meas.ch[b] = c; return; }
   meas.sub = meas.sub || {};
   const a = (meas.sub[b] = meas.sub[b] || []);
+  for (let i = 0; i < k; i++) if (!(i in a)) a[i] = null;   // no holes: they'd save differently after a reload
   a[k] = c;
 }
 export function slotList(meas) {
@@ -139,7 +140,9 @@ export function fillChords(meas, cells) {
 export function playOrder(song, lo = null, hi = null) {
   const cm = cellMap(song);
   const bars = unrollBars(song.measures.length, song.marks);
-  const sel = lo == null ? bars : bars.filter((m) => m >= lo && m <= hi);
+  let sel = lo == null ? bars : bars.filter((m) => m >= lo && m <= hi);
+  // a selection inside a repeat ends where its last bar last plays (not part-way into another time through)
+  if (lo != null && sel.length) sel = sel.slice(0, sel.lastIndexOf(Math.max(...sel)) + 1);
   const useBars = sel.length ? sel : Array.from({ length: hi - lo + 1 }, (_, k) => lo + k);
   const order = [];
   for (const m of useBars) for (let k = 0; k < song.measures[m].ch.length; k++) order.push(cm.start[m] + k);

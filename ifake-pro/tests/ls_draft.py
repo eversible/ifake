@@ -53,6 +53,9 @@ async def main():
         print("glide C3→G3 played:", await J(f"__log.slice({n0} - 1).map(x => x.m).join(',')"), "| all released:", await J("__log.filter(x => x.rel === null).length === 0"))
         # Draft + Latch: tap the Latch switch, then keys toggle; ▶ replays; Clear; Write
         async def tapb(w):
+            if w in ('clear', 'follow', 'latch'):          # these live in the piano bar's ⋯ menu
+                m = await J("(() => { const b = document.querySelector('#bigpiano [data-bp=\"more\"]').getBoundingClientRect(); return [b.x + b.width/2, b.y + b.height/2]; })()")
+                await page.touchscreen.tap(*m); await page.wait_for_timeout(80)
             r = await J(f"(() => {{ const b = document.querySelector('#bigpiano [data-bp={w}]').getBoundingClientRect(); return [b.x + b.width/2, b.y + b.height/2]; }})()")
             await page.touchscreen.tap(*r); await page.wait_for_timeout(80)
         await tapb('latch')

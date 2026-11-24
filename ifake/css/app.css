@@ -34,7 +34,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 #topbar {
   display: flex; align-items: center; gap: 4px; padding: 6px 8px; background: var(--kb-bg); color: var(--key-text);
 }
-.tb { min-width: 38px; height: 36px; border-radius: 8px; font-size: 19px; background: var(--key-alt); }
+.tb { min-width: 40px; height: 40px; border-radius: 8px; font-size: 19px; background: var(--key-alt); }
 #title { flex: 1; min-width: 0; font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
 
 /* chart */
@@ -50,6 +50,8 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .cell.sel { background: var(--sel); }
 .cell.range { background: var(--sel-range); }
 .cell.range.sel { background: var(--sel); }
+.cell.selbar:not(.sel):not(.range) { background: rgba(255, 196, 0, 0.1); }
+.cell.playbar:not(.playing) { background: rgba(123, 220, 181, 0.16); }
 .cell.playing { background: rgba(123, 220, 181, 0.45); }
 .cell.playing::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 5px; background: #2fb67c;
@@ -63,8 +65,14 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   content: ""; position: absolute; left: 6px; top: 6px; width: 14px; height: 14px; border-radius: 50%;
   background: #0a84ff; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); box-sizing: border-box;
 }
-.ch.cut .x, .ch.cut .b { display: none; }
-.ch.cut::after { content: "…"; font-size: 0.85em; position: relative; top: -0.45em; margin-left: 1px; color: #3b362c; }
+.ch .l1, .ch .l2 { display: contents; }
+/* a crowded symbol: root and quality on top, extensions and bass underneath */
+.ch.two { flex-direction: column; align-items: flex-start; justify-content: center; }
+.ch.two .l1, .ch.two .l2 { display: flex; align-items: baseline; white-space: nowrap; }
+.ch.two .l2 { margin-top: 0.05em; }
+.ch.two .x { top: 0; font-size: 0.8em; margin-left: 0; }
+.ch.two .b { font-size: 0.85em; }
+.ch.cut .x { display: none; }                      /* last resort: extensions hide; the bass never does */
 .ch {
   position: absolute; left: 3px; top: 0; bottom: 0; z-index: 2; pointer-events: none;
   display: flex; align-items: center; white-space: nowrap; overflow: hidden;
@@ -188,7 +196,7 @@ body.typing #keyboard, body.typing #transport { display: none; }
 .chart-item { display: flex; align-items: center; gap: 8px; min-height: 48px; border-bottom: 1px solid #e5e5ea; }
 .chart-item .name { flex: 1; font-size: 16px; }
 .chart-item.current .name { font-weight: 700; }
-.chart-item button { font-size: 13px; padding: 6px 9px; border-radius: 7px; background: #e5e5ea; }
+.chart-item button { font-size: 14px; min-height: 38px; padding: 8px 12px; border-radius: 8px; background: #e5e5ea; }
 textarea.io { width: 100%; min-height: 120px; font: 13px ui-monospace, Menlo, monospace; border-radius: 8px; border: 1px solid #d1d1d6; padding: 8px; }
 .hint { font-size: 12px; color: #6e6e73; margin: 6px 0; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
@@ -230,10 +238,29 @@ textarea.io { width: 100%; min-height: 120px; font: 13px ui-monospace, Menlo, mo
               radial-gradient(circle, var(--bar) 1.7px, transparent 2.1px) 0 64% / 5px 5px no-repeat; }
 .rs { left: 2px; }
 .re { right: 2px; }
-.cell.rep-start .ch { left: 9px; }
+.cell.rep-start .ch { left: 12px; }
 .rtimes { position: absolute; right: 1px; top: -13px; font: 700 9px var(--ui-font); color: var(--bar); pointer-events: none; }
 .volta {
   position: absolute; left: 2px; top: -13px; height: 11px; z-index: 3; pointer-events: none;
   border-left: 1.5px solid var(--bar); border-top: 1.5px solid var(--bar); padding-left: 3px;
   font: 700 9px var(--ui-font); line-height: 10px; color: var(--bar);
 }
+
+/* a new version is ready (Home Screen apps don't reload by themselves) */
+#update-bar { position: fixed; top: calc(env(safe-area-inset-top) + 8px); left: 50%; transform: translateX(-50%); z-index: 90;
+  background: #0a84ff; color: #fff; border: 0; border-radius: 20px; padding: 10px 18px; font: 600 15px -apple-system, BlinkMacSystemFont, sans-serif;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); }
+
+/* keyboard pages: chord entry (1) and form & layout (2); the move/undo row is on both */
+#keyboard[data-page="1"] .key.p2, #keyboard[data-page="2"] .key.p1 { display: none; }
+.key.span2 { grid-column: span 2; }
+.key.span3 { grid-column: span 3; }
+.key.pagekey { background: #3a3a3c; color: #64a8ff; font-weight: 600; }
+/* Charts sheet: Delete in red; folded sections */
+.chart-item button.del { color: #ff3b30; }
+.chart-item[data-confirm="1"] button.del { background: #ff3b30; color: #fff; }
+details.more > summary { cursor: pointer; font-weight: 600; font-size: 15px; padding: 10px 0; color: var(--accent); list-style: none; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::after { content: ' ›'; }
+details.more[open] > summary::after { content: ' ⌄'; }
+label.btn.file { display: inline-flex; align-items: center; cursor: pointer; }

@@ -64,4 +64,7 @@ alternatives, so they can be revisited.
 | Repeats in text | `{` start, `}` end, `}x3` play three times, `N1`/`N2`/`N3` endings; exported and re-imported the same way | iReal's own codes |
 | Bar tools | Act on the selected bar: `+bar` inserts an empty bar before it, `−bar` deletes it, `Dup` copies it after itself, `%` copies the previous bar into it; repeat marks shift with the bars. (Lead Sheet's `+bar` inserts *after*, see its DECISIONS) | Insert after |
 | Saving implied 7s | A trailing `~` on the cell text marks an implied 7 (e.g. `CΔ7~`); older charts without it load as explicit 7s | A separate flag field |
-
+| Keyboard pages | Page 1: chord entry; page 2 (Form ›): repeats, endings, bars, transpose, + line / − line; the move / cell / undo / hear row is on both | All 60 keys at once; line buttons under the chart |
+| Chart size & symbols | Rows grow to fill the chart area; symbols sized to the cell; crowded ones go onto two lines (extensions and bass underneath), the bass never hidden; the selected / playing bar faintly tinted | 17 px cap; hide extensions and bass behind … |
+| Charts sheet & backups | List first; text export, import and whole-library backup folded under one row; the save status moved here | Export/Import always open |
+| Beats per bar | Changing it re-lays the chart bar by bar (marks stay on their bars); chords past the new last beat are dropped with a toast (Undo restores them) | Reflowing the flat cell list |

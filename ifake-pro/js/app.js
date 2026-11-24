@@ -109,7 +109,7 @@ async function syncRepoSongsNow() {
   if (/[?&]nosongs\b/.test(location.search)) return;          // tests start from the test chart
   let list;
   try { const r = await fetch('songs/index.json', { cache: 'no-cache' }); if (!r.ok) return; list = (await r.json()).songs || []; } catch (e) { return; }
-  const added = [], updated = [], kept = [];
+  const added = [], updated = [], kept = [], failed = [];
   for (const e of list) {
     const id = 'gh:' + e.file.replace(/\.txt$/, '');
     if (S.deleted[id]) continue;
@@ -117,7 +117,8 @@ async function syncRepoSongsNow() {
     const local = S.charts.find((c) => c.id === id);
     if (local && local.gh === e.hash) continue;
     let s;
-    try { const r = await fetch('songs/' + encodeURIComponent(e.file) + '?v=' + e.hash); if (!r.ok) continue; s = songFromText(await r.text()); } catch (err) { continue; }
+    try { const r = await fetch('songs/' + encodeURIComponent(e.file) + '?v=' + e.hash); if (!r.ok) continue; s = songFromText(await r.text()); }
+    catch (err) { failed.push(e.title || e.file); continue; }
     s.id = id;
     const now = Date.now(), chart = { ...serialiseSong(s), gh: e.hash, ghAt: now, updatedAt: now };
     syncCurrent();
@@ -129,9 +130,14 @@ async function syncRepoSongsNow() {
       S.charts.splice(idx + 1, 0, mine); kept.push(mine.title);
     }
     S.charts[idx] = chart; updated.push(s.title);
-    if (S.song.id === id) { S.song = deserialiseSong(chart); clampSelection(); invalidate(); }
+    if (S.song.id === id) {                      // the open song changed underneath: fresh undo, right tab
+      S.song = deserialiseSong(chart); S.undo = []; S.redo = [];
+      if (S.song.chartOnly && S.layer === 'melody') S.layer = 'chords';
+      clampSelection(); invalidate();
+    }
   }
   const tidied = tidyLibrary();
+  if (failed.length) toast(`Couldn't read ${failed.length > 1 ? `${failed.length} GitHub songs` : `"${failed[0]}" from GitHub`}`);
   if (!added.length && !updated.length && !tidied) return;
   persist(); renderAll();
   const n = added.length + updated.length;
@@ -183,7 +189,10 @@ function applyExternal(merged) {
 function snapshot() { return JSON.stringify(serialiseSong(S.song)); }
 function edit(fn, opts = {}) {
   const before = snapshot();
-  const r = fn();
+  let r;
+  try { r = fn(); } catch (e) {               // a failed edit leaves the song exactly as it was
+    const id = S.song.id; S.song = deserialiseSong(JSON.parse(before)); S.song.id = id; clampSelection(); invalidate(); throw e;
+  }
   if (r === false) return;
   S.undo.push(before); if (S.undo.length > 200) S.undo.shift(); S.redo = [];
   afterEdit(opts);
@@ -257,7 +266,7 @@ function timeline() {
   const byCell = {};
   for (const n2 of playableNotes(song)) {
     const cell = cm.start[n2.m] + Math.floor(n2.start / TPB);
-    (byCell[cell] = byCell[cell] || []).push({ off: (n2.start % TPB) / TPB, beats: n2.ticks / TPB, midi: n2.midi });
+    (byCell[cell] = byCell[cell] || []).push({ off: (n2.start % TPB) / TPB, beats: n2.ticks / TPB, midi: n2.midi, tup: !!(n2.ev && n2.ev.tup) });
   }
   S.tl = {
     beatsPerBar: song.time.num, cells: info, segs, mid, byCell, cm,
@@ -281,7 +290,8 @@ seq.onCell = (cell, beatStart, beatDur, swingAt) => {
   if (!list) return [];
   const swingPos = (x) => { const k = Math.floor(x + 1e-9); return k + swingAt(x - k); };
   return list.map((n) => {
-    const when = beatStart + swingAt(n.off) * beatDur, end = beatStart + swingPos(n.off + n.beats) * beatDur;
+    const at = n.tup ? (x) => x : swingAt, pos = n.tup ? (x) => x : swingPos;      // tuplets are played as written
+    const when = beatStart + at(n.off) * beatDur, end = beatStart + pos(n.off + n.beats) * beatDur;
     melHits.push({ midi: n.midi, t0: when, t1: when + Math.max(0.05, (end - when) * 0.96) });
     return engine.note(S.settings.melodyInst, n.midi, when, Math.max(0.08, (end - when) * 0.96), 0.85, 'melody');
   });
@@ -350,7 +360,7 @@ function render() {
   try {
     if (S.view === 'grid') {
       el.innerHTML = '';
-      S.layout = layoutGrid(S.song, w, S.settings.gridBars || 4);
+      S.layout = layoutGrid(S.song, w, S.settings.gridBars || 4, $('#score-wrap').clientHeight);
       el.style.height = S.layout.height + 'px';
     } else {
       el.style.height = '';
@@ -504,10 +514,15 @@ function buildBigPiano() {
   });
   el.innerHTML = `<div class="bp-bar">
     <div class="bp-mode" role="group" aria-label="Piano mode"><button data-bp="edit">Edit</button><button data-bp="draft">Draft</button></div>
-    <button data-bp="down" aria-label="Octave down">‹ oct</button><div class="bp-name"></div>
-    <button data-bp="strike" aria-label="Play the chord">▶</button><button data-bp="clear" aria-label="Release all keys">Clear</button>
+    <button data-bp="down" class="bp-oct" aria-label="Octave down">‹</button><div class="bp-name"></div><button data-bp="up" class="bp-oct" aria-label="Octave up">›</button>
+    <button data-bp="strike" aria-label="Play the chord">▶</button>
     <button data-bp="write" class="bp-write" aria-label="Write the chord into the selected slot">Write</button>
-    <button data-bp="follow" class="bp-follow" aria-label="Start the keys from the selection">Follow</button><button data-bp="latch" class="bp-latch" aria-label="Keys stay down until tapped again">Latch</button><button data-bp="up" aria-label="Octave up">oct ›</button></div>
+    <button data-bp="more" class="bp-more" aria-label="More piano options">⋯</button></div>
+    <div class="bp-menu" hidden>
+      <button data-bp="clear">Clear the keys</button>
+      <button data-bp="follow" class="bp-sw"><span>Start from the selection</span><i></i></button>
+      <button data-bp="latch" class="bp-sw"><span>Keys stay down (latch)</span><i></i></button>
+    </div>
     <div class="bp-keys">${keys}</div>`;
   updateBigPiano();
 }
@@ -524,7 +539,7 @@ function chordEdit() {
 // the keys are a free sketchpad. Keys you change stay as they are until Write or Clear.
 const followSel = () => (S.layer === 'chords' ? S.settings.draftFollowChords !== false : S.layer === 'melody' ? !!S.settings.draftFollowMelody : false);
 function noteEdit() {
-  const nk = S.nk, e = selEv(), key = S.sel ? `${S.sel.m}:${S.sel.i}:${e && !e.r ? e.p : 'r'}` : '';
+  const nk = S.nk, e = selEv(), key = S.sel ? `${S.sel.m}:${S.sel.i}:${e && !e.r ? midiOf(e.p) : 'r'}` : '';
   if (!nk.dirty && key !== nk.key) {
     nk.notes = e && !e.r ? [midiOf(e.p)] : [];
     // keep the note on the keyboard: move the piano by octaves if it's off either end
@@ -558,14 +573,18 @@ function updateBigPiano() {
   const playSeg = playingAt ? segAt(playingAt.m, playingAt.beat) : null;
   const play = new Set(playSeg && playSeg.chord ? chordKeys(playSeg.chord, S.bigBase) : []);
   el.classList.toggle('playing', !!playingAt);
-  el.querySelectorAll('.pk').forEach((k) => { const m = +k.dataset.midi; k.classList.toggle('on', on.has(m)); k.classList.toggle('play', play.has(m)); k.classList.toggle('mel', melNow.has(m)); });
+  el.querySelectorAll('.pk').forEach((k) => {
+    const m = +k.dataset.midi;
+    k.classList.toggle('on', on.has(m)); k.classList.toggle('play', play.has(m)); k.classList.toggle('mel', melNow.has(m));
+  });
   const name = el.querySelector('.bp-name');
   const latchBtn = el.querySelector('[data-bp="latch"]');
   latchBtn.hidden = !draft; latchBtn.classList.toggle('on', !!S.settings.draftLatch);
   const followBtn = el.querySelector('[data-bp="follow"]');
   followBtn.hidden = !(draft && S.settings.draftLatch && (S.layer === 'chords' || S.layer === 'melody'));
   followBtn.classList.toggle('on', followSel());
-  followBtn.setAttribute('aria-label', S.layer === 'chords' ? 'Start the keys from the selected chord' : 'Start the keys from the selected note');
+  followBtn.querySelector('span').textContent = S.layer === 'chords' ? 'Start from the selected chord' : 'Start from the selected note';
+  queueMicrotask(() => { el.querySelector('[data-bp="more"]').hidden = ![...el.querySelectorAll('.bp-menu button')].some((b) => !b.hidden); });
   if (draft) {
     // draft: just playing — keys latch (tap on/off) or sound while held, and the chord is named. Nothing
     // goes into the song unless you tap Write (Chords tab): then it goes into the selected slot
@@ -582,6 +601,7 @@ function updateBigPiano() {
     write.disabled = !c || same;
     write.classList.toggle('ready', !!c && !same);
     for (const b of el.querySelectorAll('[data-bp="strike"], [data-bp="clear"]')) b.hidden = !latch;
+    markRoot(el, on, playback || S.layer !== 'chords' ? null : c);
     if (playback) showPlaying(el, playSeg);
     return;
   }
@@ -594,8 +614,15 @@ function updateBigPiano() {
     name.textContent = c ? chordText(c) : ck.notes.length ? 'No chord name for these notes' : 'Tap keys to build a chord (lowest = root)';
     write.disabled = !c || same;
     write.classList.toggle('ready', !!c && !same);
-  } else { name.className = 'bp-name none'; name.textContent = S.layer === 'melody' ? 'Tap a key to enter a note' : ''; }
+    markRoot(el, on, playback ? null : c);
+  } else { name.className = 'bp-name none'; name.textContent = S.layer === 'melody' ? 'Tap a key to enter a note' : ''; markRoot(el, on, null); }
   if (playback) showPlaying(el, playSeg);
+}
+// the chord's root on the keys (its lowest key) is a darker blue with a dot
+function markRoot(el, on, c) {
+  const pc = c && !c.nc && c.root ? notePC(c.root) : null;
+  const key = pc == null ? null : [...on].sort((a, b) => a - b).find((m) => mod(m - pc, 12) === 0);
+  el.querySelectorAll('.pk').forEach((k) => k.classList.toggle('root', +k.dataset.midi === key));
 }
 // playing or paused: the bar names the chord playing, ▶ plays it, and Write / Clear wait until it stops
 function showPlaying(el, seg) {
@@ -650,6 +677,9 @@ function draftUp(id) {
   updateBigPiano();
 }
 function bigPianoBar(what) {
+  const menu = $('#bigpiano .bp-menu');
+  if (what === 'more') { menu.hidden = !menu.hidden; return; }
+  if (menu) menu.hidden = true;
   if (what === 'edit' || what === 'draft') {
     S.settings.pianoMode = what; persistSoon();
     for (const id of [...S.held.keys()]) draftUp(id);
@@ -695,7 +725,7 @@ function bigPianoBar(what) {
   if (S.layer !== 'chords') return;
   const ck = chordEdit();
   if (what === 'strike') strikeChord(ck.notes);
-  if (what === 'clear') { ck.notes = []; ck.dirty = true; strikeChord([]); }
+  if (what === 'clear') { ck.notes = []; ck.dirty = false; strikeChord([]); }
   if (what === 'write') {
     const c = ck.notes.length > 1 ? nameChord(ck.notes, S.song.key.fifths) : null;
     if (!c) return;
@@ -711,12 +741,13 @@ function bigPianoBar(what) {
 // so a chord sits over the notes it plays under.
 function chordHTML(c) {
   if (c.nc) return 'N.C.';
-  let h = `<span class="r">${LETTERS[c.root.letter]}</span>`;
+  // two parts: root + quality, then extensions + bass (a crowded symbol puts the second part underneath)
+  let h = `<span class="r">${LETTERS[c.root.letter]}</span>`, h2 = '';
   const a = accStr(c.root.acc); if (a) h += `<span class="ra">${a}</span>`;
   const q = qualityText(c); if (q) h += `<span class="q">${esc(q)}</span>`;
-  if (c.exts.length) h += `<span class="x">${esc(c.exts.map(extName).join(' '))}</span>`;
-  if (c.bass) h += `<span class="b">/${esc(noteName(c.bass))}</span>`;
-  return h;
+  if (c.exts.length) h2 += `<span class="x">${esc(c.exts.map(extName).join(' '))}</span>`;
+  if (c.bass) h2 += `<span class="b">/${esc(noteName(c.bass))}</span>`;
+  return `<span class="l1">${h}</span>` + (h2 ? `<span class="l2">${h2}</span>` : '');
 }
 function gridCells(L) {
   const sc = L.scale || 1, out = [];
@@ -787,17 +818,28 @@ function renderChordGrid() {
 }
 // same rule as Chord Pad: shrink a symbol to fit the space before the next chord; below 11 px,
 // hide the bracketed extensions behind "…" (the full symbol is in the info strip)
+// chord symbols as big as the cells allow (bigger rows on a short chart); one that won't fit on a line puts its
+// extensions and bass on a second line; only if that still won't fit do the extensions hide (never the bass)
 function fitGridText(g) {
-  const els = [...g.querySelectorAll('.ch')], base = 19;
-  const fit = (el) => (el.scrollWidth > el.clientWidth ? base * el.clientWidth / el.scrollWidth : base);
-  els.forEach((el) => { el.style.fontSize = base + 'px'; el.classList.remove('cut'); });
-  const s1 = els.map(fit), cut = [];
+  const L = S.layout, base = L && L.grid ? Math.max(17, Math.min(28, (L.cellH || 50) * 0.4)) : 19;
+  fitChords([...g.querySelectorAll('.ch')], base, 9);
+}
+function fitChords(els, base, min) {
+  const over = (el) => Math.max(el.scrollWidth / el.clientWidth, el.scrollHeight / el.clientHeight, 1);
+  els.forEach((el) => { el.style.fontSize = base + 'px'; el.classList.remove('two', 'cut'); });
+  const r1 = els.map(over), two = [];                  // measure everything, then write (one layout pass each)
   els.forEach((el, k) => {
-    if (s1[k] < 11 && el.querySelector('.x, .b')) { el.classList.add('cut'); cut.push(el); }
-    else el.style.fontSize = Math.max(11, s1[k]) + 'px';
+    if (r1[k] <= 1) return;
+    if (r1[k] <= 1.25 || !el.querySelector('.x, .b')) el.style.fontSize = Math.max(min, base / r1[k]) + 'px';
+    else { el.classList.add('two'); two.push(el); }
   });
-  const s2 = cut.map(fit);
-  cut.forEach((el, k) => { el.style.fontSize = Math.max(11, s2[k]) + 'px'; });
+  const r2 = two.map(over), cut = [];
+  two.forEach((el, k) => {
+    if (base / r2[k] < min && el.querySelector('.x')) { el.classList.add('cut'); cut.push(el); }
+    else el.style.fontSize = Math.max(min, base / r2[k]) + 'px';
+  });
+  const r3 = cut.map(over);
+  cut.forEach((el, k) => { el.style.fontSize = Math.max(min, base / r3[k]) + 'px'; });
 }
 function updateChordGrid() {
   const G = S.grid; if (!G) return;
@@ -809,6 +851,8 @@ function updateChordGrid() {
     el.classList.toggle('sel', S.layer === 'chords' && m === S.cs.m && b === S.cs.beat && k === (S.cs.k || 0));
     el.classList.toggle('lp', !!S.bars && m >= S.bars.a && m <= S.bars.b);
     el.classList.toggle('playing', !!playingAt && playingAt.m === m && Math.floor(pos + 1e-9) === playingAt.beat);
+    el.classList.toggle('selbar', S.layer === 'chords' && m === S.cs.m);            // the whole bar, faintly
+    el.classList.toggle('playbar', !!playingAt && playingAt.m === m);
   });
 }
 // which slot of bar m is at x (chords mode)
@@ -831,6 +875,12 @@ const durName = (e) => `${e.d === 2 ? 'double-dotted ' : e.d === 1 ? 'dotted ' :
 function chordAt(m, pos) { const seg = segAt(m, pos); return seg ? seg.chord : null; }
 function renderInfo() {
   let main = '—', sub = '';
+  if (playingAt) {                                  // playing or paused: the chord at the playhead, in every tab
+    const seg = segAt(playingAt.m, playingAt.beat), c = seg && seg.chord;
+    $('#info-main').textContent = c ? chordText(c) : 'No chord';
+    $('#info-sub').textContent = `${paused ? 'Paused' : 'Playing'} · ${barLabel(playingAt.m)}, beat ${playingAt.beat + 1}` + (c && !c.nc ? ` · ${chordNotes(c).map(noteName).join(' ')}` : '');
+    return;
+  }
   if (S.layer === 'melody') {
     const e = selEv();
     if (e) {
@@ -841,7 +891,7 @@ function renderInfo() {
     } else { main = 'Tap a note or a piano key'; }
     sub += `${sub ? ' · ' : ''}next: ${S.dur.d === 2 ? 'double-dotted ' : S.dur.d ? 'dotted ' : ''}${DUR_NAMES[S.dur.b]}${S.tup ? `, ${S.tup}-tuplet` : ''}`;
   } else if (S.layer === 'chords' && playingAt) {
-    const seg = segAt(playingAt.m, playingAt.beat), c = seg && seg.chord;
+    const seg = segAt(playingAt.m, playingAt.beat), c = seg && seg.chord;   // (any tab while playing: see below)
     main = c ? chordText(c) : 'No chord';
     sub = `${paused ? 'Paused' : 'Playing'} · ${barLabel(playingAt.m)}, beat ${playingAt.beat + 1}`;
     if (c && !c.nc) sub += ` · ${chordNotes(c).map(noteName).join(' ')}`;
@@ -926,7 +976,7 @@ function buildPanel() {
       p.appendChild(r); return;
     }
     const r = document.createElement('div');
-    r.className = 'krow' + (row.length === 8 ? ' k8' : '');
+    r.className = 'krow' + (row.length === 8 ? ' k8' : '') + (row.some((k) => k[1] === 'pianoShift') ? ' oct-row' : '');
     row.forEach(([label, action, title, arg]) => {
       const b = document.createElement('button');
       b.className = 'key' + (['root', 'cacc', 'slash'].includes(action) ? ' root' : '') + (String(label).length > 5 ? ' tiny' : String(label).length > 3 ? ' small' : '');
@@ -1024,7 +1074,7 @@ function bindPanel() {
 }
 function setLayer(layer) {
   if (layer === 'melody' && S.song.chartOnly) layer = 'chords';
-  S.layer = layer; S.bassMode = false;
+  S.layer = layer; S.bassMode = false; document.body.dataset.layer = layer;
   if (S.view !== (gridView() ? 'grid' : 'score')) { buildPanel(); render(); return; }
   buildPanel(); updateHeader(); renderChordGrid(); renderOverlay(); renderInfo();
 }
@@ -1221,7 +1271,7 @@ function barKey(action, arg) {
     }
     case 'whole': S.bars = null; renderOverlay(); renderInfo(); updatePanel(); followBars(); return;
     case 'pickup': edit(() => {
-      if (song.pickup) { song.measures.shift(); song.marks = shiftMarks(song.marks, 0, -1); song.pickup = 0; }
+      if (song.pickup) dropPickup(song);
       else { song.pickup = 1; song.measures.unshift(emptyMeasure(bt, 1)); song.marks = shiftMarks(song.marks, 0, 1); }
       S.bars = null; S.sel = null; clampSelection();
       toast(song.pickup ? 'Pickup bar added (1 beat — change in Settings)' : 'Pickup bar removed');
@@ -1378,7 +1428,8 @@ function onLoopToggle() {
     if (S.settings.loop) { const r = playRange(); seq.range.loop = true; seq.setRange({ order: r.order, loop: true, meta: r.meta }); }
     else {
       seq.pending = null;
-      if (!S.bars) { const full = playOrder(S.song), at = full.indexOf(seq.currentCell()); if (at >= 0) { seq.range = { order: full, loop: false, meta: { whole: true } }; seq.beat = at; } }
+      // already playing the whole song: carry on where it is (a repeat's second time stays the second time)
+      if (!S.bars && !(seq.range.meta && seq.range.meta.whole)) { const full = playOrder(S.song), at = full.indexOf(seq.currentCell()); if (at >= 0) { seq.range = { order: full, loop: false, meta: { whole: true } }; seq.beat = at; } }
       seq.range.loop = false;
     }
   }
@@ -1397,7 +1448,7 @@ function playheadLoop() {
     const tl = timeline(), m = tl.cm.ofCell[cur.cell], beat = cur.cell - tl.cm.start[m];
     if (!playingAt || playingAt.m !== m || playingAt.beat !== beat) {
       playingAt = { m, beat };
-      renderOverlay(); if (S.layer === 'chords') renderInfo();
+      renderOverlay(); renderInfo();
       const M = S.layout && S.layout.measures[m]; if (M) scrollIntoViewY(M.sysTop, M.sysH);
       renderTransport();
     }
@@ -1440,7 +1491,7 @@ function bindTransport() {
   });
   fastTap($('#info'), () => {
     engine.unlock();
-    if (S.layer === 'chords' && playingAt) hearChordAt(playingAt.m, playingAt.beat, true);
+    if (playingAt) hearChordAt(playingAt.m, playingAt.beat, true);
     else if (S.layer === 'chords') hearChordAt(S.cs.m, csPos(), true);
     else { const e = selEv(); if (e && !e.r) hearNote(midiOf(e.p), 1); }
     const el = $('#info'); el.classList.add('pressed'); setTimeout(() => el.classList.remove('pressed'), 150);
@@ -1499,13 +1550,15 @@ function previewType() {
     }
   } catch (e) { msg.textContent = e.message; msg.classList.add('err'); }
 }
+// the iPhone keyboard types lowercase: "d-7" and "c/e" are fine
+const capChord = (t) => t.replace(/^([\[{]*\d*\[?)([a-g])/, (m, pre, x) => pre + x.toUpperCase()).replace(/\/([a-g])(?=[#b♯♭]?\]?$)/, (m, x) => '/' + x.toUpperCase());
 function applyType() {
   const v = $('#type-input').value.trim(); if (!v) return;
   const msg = $('#type-msg');
   try {
     if (S.layer === 'chords') {
-      if (!v.includes('|') && !/\s/.test(v.replace(/\([^)]*\)/g, ''))) { setCell(parseChord(v)); toggleTypebar(false); return; }
-      const bars = parseChordBars(v);
+      if (!v.includes('|') && !/\s/.test(v.replace(/\([^)]*\)/g, ''))) { setCell(parseChord(capChord(v))); toggleTypebar(false); return; }
+      const bars = parseChordBars(v.split(/(\s+|\|)/).map(capChord).join(''));
       edit(() => {
         bars.forEach((b, k) => {
           const m = S.cs.m + k;
@@ -1550,7 +1603,6 @@ function renderSettings() {
       ${check('st-chart', 'Chord chart (no melody)', !!song.chartOnly)}
       <div class="row"><label for="st-nbars">Bars</label><input id="st-nbars" type="number" inputmode="numeric" min="1" max="400" value="${song.measures.length - (song.pickup ? 1 : 0)}"></div>
       <div class="row"><label for="st-pick">Pickup beats</label><select id="st-pick">${optionList(Array.from({ length: song.time.num }, (_, k) => ({ id: k, label: k ? String(k) : 'None' })), song.pickup || 0)}</select></div>
-      <div class="row"><label for="st-tempo">Tempo (BPM)</label><input id="st-tempo" type="number" inputmode="numeric" min="30" max="320" value="${song.tempo || 120}"></div>
     </div>
     <div class="group"><h3>Sound</h3>
       <div class="row"><label for="st-mel">Melody sound</label><select id="st-mel">${instrumentOptions(s.melodyInst, 'melody')}</select></div>
@@ -1559,8 +1611,8 @@ function renderSettings() {
       <div class="row"><label for="st-voicing">Voicing</label><select id="st-voicing">${optionList(VOICINGS, s.voicing)}</select></div>
       <div class="row"><label for="st-bpat">Bass line</label><select id="st-bpat">${optionList(BASS_PATTERNS, s.bassPattern)}</select></div>
       <div class="row"><label for="st-bass">Bass sound</label><select id="st-bass">${instrumentOptions(s.bassInst, 'bass')}</select></div>
-      ${check('st-pm', 'Play the melody', s.playMelody)}${check('st-pc', 'Play the chords', s.playChords)}
-      ${check('st-swon', 'Swing (eighths long-short)', s.swingOn)}${range('st-swing', 'Swing amount', 0.1, 1, 0.05, s.swingAmt)}${range('st-reverb', 'Reverb', 0, 0.6, 0.01, s.reverb)}
+      ${check('st-pc', 'Play the chords', s.playChords)}
+      ${range('st-swing', 'Swing amount', 0.1, 1, 0.05, s.swingAmt)}${range('st-reverb', 'Reverb', 0, 0.6, 0.01, s.reverb)}
       ${check('st-click', 'Click', s.click)}
       <div class="row"><label for="st-count">Count-in</label><select id="st-count">${optionList([{ id: 0, label: 'None' }, { id: 1, label: '1 bar' }, { id: 2, label: '2 bars' }], s.countIn)}</select></div>
     </div>
@@ -1572,7 +1624,7 @@ function renderSettings() {
       <div class="row"><label for="st-gbl">Bars per line (chord grid)</label><select id="st-gbl">${optionList([1, 2, 3, 4, 5, 6, 8].map((n) => ({ id: String(n), label: n })), String(s.gridBars || 4))}</select></div>
       ${check('st-aud', 'Play notes while editing', s.audition)}
     </div>
-    <div class="group"><h3>Gestures</h3>
+    <details class="group more"><summary>Gestures</summary>
       <dl class="howto">
         <dt>Piano key</dt><dd>enter a note (current length)</dd>
         <dt>Tap a note</dt><dd>select; a length key then changes it</dd>
@@ -1582,7 +1634,7 @@ function renderSettings() {
         <dt>Tie</dt><dd>tie to the next note (adds one if needed)</dd>
         <dt>⌨</dt><dd>4:C5 8.:Bb4 16:r 3[8:C5 8:D5 8:E5] | …</dd>
       </dl>
-    </div>`;
+    </details>`;
   const on = (id, ev, fn) => $('#' + id).addEventListener(ev, fn);
   const setS = (k, v, retime = false) => { S.settings[k] = v; if (retime) invalidate(); applyAudioSettings(); persistSoon(); };
   const songEdit = (fn) => { edit(fn); renderSettings(); };
@@ -1592,15 +1644,12 @@ function renderSettings() {
   on('st-num', 'change', (e) => songEdit(() => changeTime(+e.target.value, S.song.time.den)));
   on('st-den', 'change', (e) => songEdit(() => changeTime(S.song.time.num, +e.target.value)));
   on('st-pick', 'change', (e) => songEdit(() => setPickup(+e.target.value)));
-  on('st-tempo', 'change', (e) => setTempo(+e.target.value));
   on('st-mel', 'change', (e) => { setS('melodyInst', e.target.value); preloadInstruments(); });
   on('st-chord', 'change', (e) => { setS('chordInst', e.target.value); preloadInstruments(); });
   on('st-bass', 'change', (e) => { setS('bassInst', e.target.value); preloadInstruments(); });
   on('st-compat', 'change', (e) => setS('compPattern', e.target.value));
   on('st-voicing', 'change', (e) => setS('voicing', e.target.value, true));
   on('st-bpat', 'change', (e) => { setS('bassPattern', e.target.value); preloadInstruments(); });
-  on('st-pm', 'change', (e) => { setS('playMelody', e.target.checked); renderTransport(); });
-  on('st-swon', 'change', (e) => { setS('swingOn', e.target.checked); renderTransport(); });
   on('st-pc', 'change', (e) => setS('playChords', e.target.checked));
   on('st-click', 'change', (e) => setS('click', e.target.checked));
   on('st-count', 'change', (e) => setS('countIn', +e.target.value));
@@ -1648,9 +1697,15 @@ function changeTime(num, den) {
   clampSelection();
   return full;
 }
+// remove the pickup bar; if it's the only bar, it becomes an empty full bar instead (a song keeps one bar)
+function dropPickup(song) {
+  if (song.measures.length > 1) { song.measures.shift(); song.marks = shiftMarks(song.marks, 0, -1); }
+  else song.measures[0] = emptyMeasure(song.time.num * beatTicks(song.time.den), song.time.num);
+  song.pickup = 0;
+}
 function setPickup(beats) {
   const song = S.song, bt = beatTicks(song.time.den);
-  if (song.pickup) { song.measures.shift(); song.marks = shiftMarks(song.marks, 0, -1); }
+  if (song.pickup) dropPickup(song);
   song.pickup = beats;
   if (beats) { song.measures.unshift(emptyMeasure(beats * bt, beats)); song.marks = shiftMarks(song.marks, 0, 1); }
   S.bars = null; S.sel = null; clampSelection();
@@ -1660,17 +1715,24 @@ function renderCharts() {
   persist();
   const items = S.charts.map((c) => `
     <div class="chart-item${c.id === S.song.id ? ' current' : ''}" data-id="${c.id}">
-      <span class="name" data-open>${esc(c.title)}${c.gh ? ' <small class="gh-tag">GitHub</small>' : ''}</span><button data-dup>Duplicate</button><button data-del>Delete</button>
+      <span class="name" data-open>${esc(c.title)}${c.gh ? ' <small class="gh-tag">GitHub</small>' : ''}</span><button data-dup>Duplicate</button><button data-del class="del">Delete</button>
     </div>`).join('');
   $('#charts-body').innerHTML = `
-    <div class="btn-row"><button class="btn" id="ch-new">New song</button><button class="btn" id="ch-new-chart">New chord chart</button><button class="btn secondary" id="ch-demo">Add test chart</button></div>
+    <div class="btn-row"><button class="btn" id="ch-new">New song</button><button class="btn" id="ch-new-chart">New chord chart</button></div>
     <div class="group">${items}</div>
-    <div class="group"><h3>Export this song as text</h3><textarea class="io" id="ch-export" readonly>${esc(songToText(S.song))}</textarea>
-      <div class="btn-row"><button class="btn secondary" id="ch-copy">Copy</button></div></div>
-    <div class="group"><h3>Import</h3>
-      <textarea class="io" id="ch-import" placeholder="Paste a song exported from here, or a chart exported from iFake"></textarea>
-      <div class="btn-row"><button class="btn secondary" id="ch-import-go">Import as new song</button></div>
-      <p class="hint" id="ch-import-msg"></p></div>`;
+    <details class="group more"><summary>Export, import and backup</summary>
+      <h3>This song as text</h3><textarea class="io" id="ch-export" readonly>${esc(songToText(S.song))}</textarea>
+      <div class="btn-row"><button class="btn secondary" id="ch-copy">Copy</button></div>
+      <h3>Import</h3>
+      <textarea class="io" id="ch-import" placeholder="Paste a song or a backup exported from here, or a chart exported from iFake"></textarea>
+      <div class="btn-row"><button class="btn secondary" id="ch-import-go">Import</button></div>
+      <p class="hint" id="ch-import-msg"></p>
+      <h3>All songs</h3>
+      <p class="hint">A backup holds every song, to move them to another device or to the app at a new address.</p>
+      <div class="btn-row"><button class="btn secondary" id="ch-backup">Save a backup</button><button class="btn secondary" id="ch-backup-copy">Copy backup</button>
+        <label class="btn secondary file">Restore a backup…<input type="file" id="ch-restore" accept=".json,application/json,text/plain" hidden></label></div>
+      <div class="btn-row"><button class="btn secondary" id="ch-demo">Add the test chart</button></div>
+    </details>`;
   $('#charts-body').querySelectorAll('.chart-item').forEach((row) => {
     const id = row.dataset.id;
     row.querySelector('[data-open]').addEventListener('click', () => { switchSong(id); closeSheets(); });
@@ -1680,7 +1742,7 @@ function renderCharts() {
       S.charts.unshift({ ...serialiseSong(src), updatedAt: Date.now() }); switchSong(src.id); renderCharts();
     });
     row.querySelector('[data-del]').addEventListener('click', () => {
-      if (row.dataset.confirm !== '1') { row.dataset.confirm = '1'; row.querySelector('[data-del]').textContent = 'Confirm'; return; }
+      if (row.dataset.confirm !== '1') { row.dataset.confirm = '1'; row.querySelector('[data-del]').textContent = 'Delete?'; return; }
       S.charts = S.charts.filter((c) => c.id !== id); S.deleted[id] = Date.now();
       if (!S.charts.length) S.charts = [{ ...serialiseSong(newSong()), updatedAt: Date.now() }];
       if (id === S.song.id) switchSong(S.charts[0].id, { saveCurrent: false }); else persist();
@@ -1694,9 +1756,13 @@ function renderCharts() {
   });
   $('#ch-demo').addEventListener('click', () => { const s = songFromText(DEMO_SONG_TEXT); S.charts.unshift({ ...serialiseSong(s), updatedAt: Date.now() }); switchSong(s.id); closeSheets(); });
   $('#ch-copy').addEventListener('click', async () => { const ta = $('#ch-export'); try { await navigator.clipboard.writeText(ta.value); toast('Copied'); } catch (e) { ta.focus(); ta.select(); toast('Select all and copy'); } });
+  $('#ch-backup').addEventListener('click', saveBackup);
+  $('#ch-backup-copy').addEventListener('click', async () => { try { await navigator.clipboard.writeText(backupText()); toast('Backup copied'); } catch (e) { toast("Couldn't copy: use Save a backup"); } });
+  $('#ch-restore').addEventListener('change', async (e) => { const f = e.target.files[0]; if (f) { try { restoreBackup(await f.text()); } catch (err) { toast(err.message); } } });
   $('#ch-import-go').addEventListener('click', () => {
     const txt = $('#ch-import').value;
     try {
+      if (/^\s*\{/.test(txt)) { restoreBackup(txt); return; }          // a backup pasted in
       let s;
       if (/^\s*(\||\{)/m.test(txt) && !/^chords:/im.test(txt)) {          // a Chord Pad chart: its bars become chords
         const title = (/^title:\s*(.*)$/im.exec(txt) || [])[1] || 'Imported chords';
@@ -1705,6 +1771,39 @@ function renderCharts() {
       S.charts.unshift({ ...serialiseSong(s), updatedAt: Date.now() }); switchSong(s.id); closeSheets(); toast('Imported');
     } catch (e) { $('#ch-import-msg').textContent = e.message; }
   });
+}
+// ---- backups: every song in one file (each Home Screen app keeps its own songs, so this moves them)
+function backupText() {
+  syncCurrent();
+  return JSON.stringify({ app: 'ifake-pro', kind: 'backup', version: 1, saved: new Date().toISOString(), songs: S.charts }, null, 1);
+}
+async function saveBackup() {
+  const name = `iFake Pro songs ${new Date().toISOString().slice(0, 10)}.json`;
+  const file = new File([backupText()], name, { type: 'application/json' });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+// a song already here keeps whichever copy was changed last; restored songs are no longer "deleted"
+function restoreBackup(text) {
+  let data;
+  try { data = JSON.parse(text); } catch (e) { throw new Error("That isn't a backup file"); }
+  const songs = data && Array.isArray(data.songs) ? data.songs : null;
+  if (!songs) throw new Error("That isn't an iFake Pro backup");
+  syncCurrent();
+  let added = 0, updated = 0;
+  for (const c of songs) {
+    if (!c || !c.id || !Array.isArray(c.bars)) continue;
+    try { deserialiseSong(c); } catch (e) { continue; }
+    delete S.deleted[c.id];
+    const i = S.charts.findIndex((x) => x.id === c.id);
+    if (i < 0) { S.charts.push(c); added++; }
+    else if ((c.updatedAt || 0) > (S.charts[i].updatedAt || 0)) { S.charts[i] = c; updated++; }
+  }
+  const cur = S.charts.find((x) => x.id === S.song.id);
+  if (cur) S.song = deserialiseSong(cur);
+  tidyLibrary(); persist(); render(); renderCharts();
+  toast(added || updated ? `Restored: ${added} new, ${updated} updated` : 'Nothing new in that backup');
 }
 function switchSong(id, opts = {}) {
   if (opts.saveCurrent !== false) syncCurrent();
@@ -1775,6 +1874,10 @@ function bindGlobal() {
   try { if (navigator.devicePosture) navigator.devicePosture.addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
   try { matchMedia('(vertical-viewport-segments: 2)').addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
   const bp = $('#bigpiano');
+  document.addEventListener('pointerdown', (e) => {          // a tap anywhere else closes the ⋯ menu
+    const menu = $('#bigpiano .bp-menu');
+    if (menu && !menu.hidden && !e.target.closest('.bp-menu, [data-bp="more"]')) menu.hidden = true;
+  }, true);
   bp.addEventListener('pointerdown', (e) => {
     const b = e.target.closest('[data-bp]');
     if (b) { e.preventDefault(); if (!b.disabled) bigPianoBar(b.dataset.bp); return; }
@@ -1813,7 +1916,24 @@ async function boot() {
   store.connectRemote(() => libraryData()).then(updateSyncLabel).then(syncRepoSongs);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncRepoSongs(); });
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* not offered */ }
-  if ('serviceWorker' in navigator && window.self === window.top && (location.protocol === 'https:' || location.hostname === 'localhost') && !location.hostname.endsWith('claude.ai')) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && window.self === window.top && (location.protocol === 'https:' || location.hostname === 'localhost') && !location.hostname.endsWith('claude.ai')) { navigator.serviceWorker.register('sw.js').catch(() => {}); watchForUpdates(); }
   window.__ls = { S, engine, seq, keyAction, enterPitch, render, renderAll, renderOverlay, playRange, timeline, libraryData, setLayer, tapScore, alignFold, syncRepoSongs, tidyLibrary };   // for testing
 }
 boot();
+
+// A Home Screen app is resumed rather than reloaded, so look for a new build whenever it comes back to the
+// front; when one has taken over, offer a reload.
+function watchForUpdates() {
+  const sw = navigator.serviceWorker, had = !!sw.controller;
+  sw.addEventListener('controllerchange', () => { if (had) showUpdateBar(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') sw.getRegistration().then((r) => r && r.update()).catch(() => {});
+  });
+}
+function showUpdateBar() {
+  if (document.getElementById('update-bar')) return;
+  const b = document.createElement('button');
+  b.id = 'update-bar'; b.textContent = 'Update ready · tap to reload';
+  b.onclick = () => { try { persist(); } catch (e) { /* saved already */ } location.reload(); };
+  document.body.appendChild(b);
+}

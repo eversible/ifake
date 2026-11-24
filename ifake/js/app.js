@@ -96,7 +96,7 @@ function textToChart(text) {
       if (tok === '{') { (ch.marks[bar] = ch.marks[bar] || {}).start = true; continue; }
       if ((m = /^\}(?:x(\d+))?$/.exec(tok))) { const b = Math.floor((ch.cells.length - 1) / ch.bpb); if (b >= 0) (ch.marks[b] = ch.marks[b] || {}).end = m[1] ? +m[1] : 2; continue; }
       if ((m = /^N([1-3])$/.exec(tok))) { (ch.marks[bar] = ch.marks[bar] || {}).ending = +m[1]; continue; }
-      ch.cells.push(tok === '.' ? null : parseChord(tok));
+      ch.cells.push(tok === '.' ? null : impliedSeven(parseChord(tok)));
     }
   }
   // sanity-check the layout: 2–8 beats per bar, whole bars on each line
@@ -106,6 +106,8 @@ function textToChart(text) {
   return ch;
 }
 
+// in this app Δ, ø and alt bring their 7 with them: a text chart's "CΔ7" is that implied 7
+function impliedSeven(c) { if (c && c.quals.includes('dom7') && c.quals.some((q) => q === 'maj' || q === 'hdim' || q === 'alt')) c.auto7 = true; return c; }
 // cells are saved as chord text; a trailing "~" marks a 7 that is only implied by Δ / ø / alt
 const cellText = (c) => (c ? chordText(c) + (c.auto7 ? '~' : '') : '');
 const parseCell = (t) => { const auto = t.endsWith('~'); const c = parseChord(auto ? t.slice(0, -1) : t); if (auto && c.quals.includes('dom7')) c.auto7 = true; return c; };
@@ -245,7 +247,10 @@ function setSel(a, b = a, opts = {}) {
 
 // ---------------------------------------------------------------- editing
 function snapshot() { return { cells: S.chart.cells.map((c) => (c ? cloneChord(c) : null)), cpl: S.chart.cpl, bpb: S.chart.bpb, marks: JSON.parse(JSON.stringify(S.chart.marks || {})) }; }
-function restore(snap) { S.chart.cells = snap.cells; S.chart.cpl = snap.cpl; S.chart.bpb = snap.bpb; S.chart.marks = snap.marks || {}; }
+function restore(snap) {
+  S.chart.cells = snap.cells; S.chart.cpl = snap.cpl; S.chart.bpb = snap.bpb; S.chart.marks = snap.marks || {};
+  S.settings.lastBpb = snap.bpb; S.settings.lastCpl = snap.cpl;
+}
 function edit(fn, opts = {}) {
   const before = snapshot();
   const result = fn();
@@ -283,14 +288,25 @@ const KB = [
   ['add9', 'add', 'alt small', '9'], ['add11', 'add', 'alt small', '11'], ['omit3', 'omit', 'alt small', '3'], ['omit5', 'omit', 'alt small', '5'],
   ['⇄', 'enh', 'alt', null, 'Respell root (C♯ ↔ D♭)'], ['N.C.', 'nc', 'alt small'], ['⌨', 'type', 'alt', null, 'Type a chord or progression'],
   ['Copy', 'copy', 'alt small'], ['Paste', 'paste', 'alt small'], ['⌫', 'clear', 'alt', null, 'Clear'],
-  ['◀', 'left', 'alt', null, 'Previous cell'], ['▶', 'right', 'alt', null, 'Next cell'], ['⇥', 'nextbar', 'alt', null, 'Next bar'],
-  ['+cell', 'ins', 'alt small'], ['−cell', 'del', 'alt small'],
-  ['↶', 'undo', 'alt', null, 'Undo'], ['↷', 'redo', 'alt', null, 'Redo'], ['−½', 'tr', 'alt small', -1, 'Transpose down'], ['+½', 'tr', 'alt small', 1, 'Transpose up'], ['♪', 'hear', 'alt', null, 'Hear chord'],
-  ['|:', 'rstart', 'form', null, 'Repeat start'], [':|', 'rend', 'form', null, 'Repeat end'], ['×2', 'rtimes', 'form small', null, 'Times to play'],
-  ['1.', 'ending', 'form', 1, '1st ending'], ['2.', 'ending', 'form', 2, '2nd ending'], ['3.', 'ending', 'form', 3, '3rd ending'],
-  ['+bar', 'insbar', 'form small', null, 'Insert bar'], ['−bar', 'delbar', 'form small', null, 'Delete bar'], ['Dup', 'dupbar', 'form small', null, 'Duplicate bar'], ['%', 'prevbar', 'form', null, 'Repeat previous bar'],
+  // page 2: form and layout
+  ['|:', 'rstart', 'form p2', null, 'Repeat start'], [':|', 'rend', 'form p2', null, 'Repeat end'], ['×2', 'rtimes', 'form small p2', null, 'Times to play'],
+  ['1.', 'ending', 'form p2', 1, '1st ending'], ['2.', 'ending', 'form p2', 2, '2nd ending'], ['3.', 'ending', 'form p2', 3, '3rd ending'],
+  ['+bar', 'insbar', 'form small p2', null, 'Insert bar'], ['−bar', 'delbar', 'form small p2', null, 'Delete bar'], ['Dup', 'dupbar', 'form small p2', null, 'Duplicate bar'], ['%', 'prevbar', 'form p2', null, 'Repeat previous bar'],
+  ['−½', 'tr', 'alt small p2 span2', -1, 'Transpose down'], ['+½', 'tr', 'alt small p2 span2', 1, 'Transpose up'],
+  ['+ line', 'lineadd', 'alt small p2 span3', null, 'Add a line at the end'], ['− line', 'linedel', 'alt small p2 span3', null, 'Remove the last line (if empty)'],
+  // both pages: moving, undo, hearing, and the page switch
+  ['◀', 'left', 'alt pb', null, 'Previous cell'], ['▶', 'right', 'alt pb', null, 'Next cell'], ['⇥', 'nextbar', 'alt pb', null, 'Next bar'],
+  ['+cell', 'ins', 'alt small pb'], ['−cell', 'del', 'alt small pb'],
+  ['↶', 'undo', 'alt pb', null, 'Undo'], ['↷', 'redo', 'alt pb', null, 'Redo'], ['♪', 'hear', 'alt pb', null, 'Hear chord'],
+  ['Form ›', 'page', 'alt small pb span2 pagekey', null, 'Repeats, endings, bars and transpose'],
 ];
+// keys without a page class are chord entry (page 1)
+KB.forEach((k) => { if (!/\bp2\b|\bpb\b/.test(k[2] || '')) k[2] = (k[2] || '') + ' p1'; });
 
+function setKbPage(n) {
+  const kb = $('#keyboard'); kb.dataset.page = n;
+  const pk = kb.querySelector('.pagekey'); if (pk) pk.textContent = n === 2 ? '‹ Chords' : 'Form ›';
+}
 function buildKeyboard() {
   const kb = $('#keyboard');
   kb.innerHTML = '';
@@ -302,6 +318,7 @@ function buildKeyboard() {
     if (title) b.title = title; b.setAttribute('aria-label', title || label);
     kb.appendChild(b);
   });
+  setKbPage(1);
   // keys act on touch-down for speed; ⌨ waits for the tap to finish, because iOS only shows its
   // keyboard when focus happens at the end of a tap
   kb.addEventListener('pointerdown', (e) => {
@@ -331,6 +348,16 @@ function fastTap(el, fn) {
 function keyAction(action, arg) {
   const cells = S.chart.cells, i = S.sel.a;
   switch (action) {
+    case 'page': setKbPage(+$('#keyboard').dataset.page === 2 ? 1 : 2); return;
+    case 'lineadd': edit(() => { ensureLength(S.chart.cells.length + S.chart.cpl); }, { audition: false }); toast('Line added'); return;
+    case 'linedel': {
+      const n = S.chart.cells.length, cpl = S.chart.cpl;
+      if (n <= cpl) return;
+      if (S.chart.cells.slice(n - cpl).some(Boolean)) { toast("The last line isn't empty — clear it first"); return; }
+      edit(() => { S.chart.cells.length = n - cpl; S.chart.marks = shiftMarks(S.chart.marks, (n - cpl) / S.chart.bpb, -(cpl / S.chart.bpb)); }, { audition: false });
+      setSel(Math.min(S.sel.a, S.chart.cells.length - 1), Math.min(S.sel.b, S.chart.cells.length - 1));
+      return;
+    }
     case 'root': {
       const c = cells[i];
       const letter = LETTERS.indexOf(arg);
@@ -494,17 +521,29 @@ function updateKeys() {
 // ---------------------------------------------------------------- grid rendering
 function chordHTML(c) {
   if (c.nc) return 'N.C.';
-  let h = `<span class="r">${LETTERS[c.root.letter]}</span>`;
+  // two parts: root + quality, then extensions + bass (a crowded symbol puts the second part underneath)
+  let h = `<span class="r">${LETTERS[c.root.letter]}</span>`, h2 = '';
   const a = accStr(c.root.acc); if (a) h += `<span class="ra">${a}</span>`;
   const q = qualityText(c); if (q) h += `<span class="q">${esc(q)}</span>`;
-  if (c.exts.length) h += `<span class="x">${esc(c.exts.map(extName).join(' '))}</span>`;
-  if (c.bass) h += `<span class="b">/${esc(noteName(c.bass))}</span>`;
-  return h;
+  if (c.exts.length) h2 += `<span class="x">${esc(c.exts.map(extName).join(' '))}</span>`;
+  if (c.bass) h2 += `<span class="b">/${esc(noteName(c.bass))}</span>`;
+  return `<span class="l1">${h}</span>` + (h2 ? `<span class="l2">${h2}</span>` : '');
+}
+
+// rows grow to fill a tall chart area (the Duo's top half), never below the CSS height
+function sizeRows(grid, ch) {
+  grid.style.removeProperty('--cell-h');
+  const wrap = $('#chart-wrap'), lines = Math.ceil(ch.cells.length / ch.cpl);
+  const base = parseFloat(getComputedStyle(grid).getPropertyValue('--cell-h')) || 46;
+  const room = wrap.clientHeight - 30;
+  const h = Math.floor(room / lines - 15);
+  if (h > base) grid.style.setProperty('--cell-h', Math.min(84, h) + 'px');
 }
 
 function renderGrid() {
   const ch = S.chart, grid = $('#grid');
   grid.style.setProperty('--cpl', ch.cpl);
+  sizeRows(grid, ch);
   const out = [];
   for (let i = 0; i < ch.cells.length; i++) {
     const col = i % ch.cpl;
@@ -531,25 +570,33 @@ function renderGrid() {
   grid.innerHTML = out.join('');
   fitChordText();
   updateSelection();
-  if (seq.playing && playingCell >= 0) { const el = cellEl(playingCell); if (el) el.classList.add('playing'); }
+  if (seq.playing && playingCell >= 0) { const el = cellEl(playingCell); if (el) el.classList.add('playing'); markPlayBar(playingCell); }
 }
 const cellEl = (i) => $(`#grid .cell[data-i="${i}"]`);
 
-// shrink chord symbols that don't fit the space before the next chord; below 10 px, hide the
-// bracketed extensions behind "…" rather than shrinking further (the full symbol is in the info strip)
+// chord symbols as big as the cell allows; one that won't fit on a line puts its extensions and bass on a
+// second line; only if that still won't fit do the extensions hide (never the bass; the info strip has it all)
 function fitChordText() {
-  const els = [...document.querySelectorAll('#grid .ch')];
-  const base = Math.max(11, Math.min(17, (document.querySelector('#grid .cell')?.clientWidth || 24) * 0.62));
-  const fit = (el) => (el.scrollWidth > el.clientWidth ? base * el.clientWidth / el.scrollWidth : base);
-  els.forEach((el) => { el.style.fontSize = base + 'px'; el.classList.remove('cut'); });
-  const s1 = els.map(fit);                       // measure everything first, then write (one layout pass)
-  const cut = [];
+  const cell = document.querySelector('#grid .cell');
+  const base = Math.max(11, Math.min(26, (cell ? cell.clientWidth : 24) * 0.62, (cell ? cell.clientHeight : 46) * 0.37));
+  fitChords([...document.querySelectorAll('#grid .ch')], base, cell && cell.clientWidth < 30 ? 8 : 10);   // narrow phone cells go smaller
+}
+function fitChords(els, base, min) {
+  const over = (el) => Math.max(el.scrollWidth / el.clientWidth, el.scrollHeight / el.clientHeight, 1);
+  els.forEach((el) => { el.style.fontSize = base + 'px'; el.classList.remove('two', 'cut'); });
+  const r1 = els.map(over), two = [];                  // measure everything, then write (one layout pass each)
   els.forEach((el, k) => {
-    if (s1[k] < 10 && el.querySelector('.x, .b')) { el.classList.add('cut'); cut.push(el); }
-    else el.style.fontSize = Math.max(10, s1[k]) + 'px';
+    if (r1[k] <= 1) return;
+    if (r1[k] <= 1.25 || !el.querySelector('.x, .b')) el.style.fontSize = Math.max(min, base / r1[k]) + 'px';
+    else { el.classList.add('two'); two.push(el); }
   });
-  const s2 = cut.map(fit);
-  cut.forEach((el, k) => { el.style.fontSize = Math.max(10, s2[k]) + 'px'; });
+  const r2 = two.map(over), cut = [];
+  two.forEach((el, k) => {
+    if (base / r2[k] < min && el.querySelector('.x')) { el.classList.add('cut'); cut.push(el); }
+    else el.style.fontSize = Math.max(min, base / r2[k]) + 'px';
+  });
+  const r3 = cut.map(over);
+  cut.forEach((el, k) => { el.style.fontSize = Math.max(min, base / r3[k]) + 'px'; });
 }
 
 function updateSelection() {
@@ -558,6 +605,7 @@ function updateSelection() {
     const i = +el.dataset.i;
     el.classList.toggle('sel', i === S.sel.a && !isRange());
     el.classList.toggle('range', isRange() && i >= lo && i <= hi);
+    el.classList.toggle('selbar', !isRange() && Math.floor(i / S.chart.bpb) === Math.floor(S.sel.a / S.chart.bpb));
   });
   renderLoop();
 }
@@ -703,6 +751,8 @@ function playRange() {
   if (isRange()) {
     const lo = selLo(), hi = selHi();
     let order = full.filter((c) => c >= lo && c <= hi);
+    // a selection inside a repeat ends where its last cell last plays (not part-way into another time through)
+    if (order.length) order = order.slice(0, order.lastIndexOf(Math.max(...order)) + 1);
     if (!order.length) order = Array.from({ length: hi - lo + 1 }, (_, k) => lo + k);
     return { order, from: 0, meta: { whole: false, lo, hi } };
   }
@@ -773,8 +823,13 @@ function onLoopToggle() {
 
 let playingCell = -1, lastRange = null;
 function clearPlayhead() {
-  document.querySelectorAll('#grid .playing').forEach((el) => el.classList.remove('playing'));
+  document.querySelectorAll('#grid .playing, #grid .playbar').forEach((el) => el.classList.remove('playing', 'playbar'));
   playingCell = -1;
+}
+function markPlayBar(cell) {
+  const bar = Math.floor(cell / S.chart.bpb);
+  document.querySelectorAll('#grid .playbar').forEach((el) => el.classList.remove('playbar'));
+  for (let i = bar * S.chart.bpb; i < (bar + 1) * S.chart.bpb; i++) { const e = cellEl(i); if (e) e.classList.add('playbar'); }
 }
 function playheadLoop() {
   const cur = seq.poll();
@@ -782,6 +837,7 @@ function playheadLoop() {
     const old = cellEl(playingCell); if (old) old.classList.remove('playing');
     const el = cellEl(cur.cell);
     if (el) { el.classList.add('playing'); el.scrollIntoView({ block: 'nearest' }); }
+    markPlayBar(cur.cell);
     playingCell = cur.cell;
     // the sequencer may have switched to a pending range
     if (seq.range !== lastRange) { lastRange = seq.range; renderLoop(); }
@@ -937,15 +993,16 @@ function previewType() {
 //   tokens with "."      one token per beat from the selected cell ("." = hold)
 //   several chords       one chord per bar from the selected bar
 //   bars split by "|"    chords spread evenly over each bar ("." = hold, "%" = repeat previous bar, empty bar = hold)
+const capTok = (t) => t.replace(/^[a-g]/, (x) => x.toUpperCase()).replace(/\/([a-g])(?=[#b♯♭]?$)/, (m, x) => '/' + x.toUpperCase());
 function planText(v) {
   const bpb = S.chart.bpb;
-  const parse = (t) => (t === '.' ? null : t === '%' ? '%' : parseChord(t));
+  const parse = (t) => (t === '.' ? null : t === '%' ? '%' : parseChord(capTok(t)));
   if (!v.includes('|')) {
     const toks = splitTokens(v);
     if (toks.length === 1) {
       if (toks[0] === '.') return { clear: true };
       if (toks[0] === '%') return { bars: [['%']] };
-      return { single: parseChord(toks[0]) };
+      return { single: parseChord(capTok(toks[0])) };
     }
     if (toks.includes('.')) {
       if (toks.includes('%')) throw new Error('"%" repeats a whole bar — use it between "|" bar lines');
@@ -1015,14 +1072,6 @@ function bindTopbar() {
   inp.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== inp) document.body.classList.remove('typing'); }, 150));
   $('#type-go').addEventListener('click', applyType);
   $('#type-close').addEventListener('click', () => toggleTypebar(false));
-  $('#line-add').addEventListener('click', () => edit(() => { ensureLength(S.chart.cells.length + S.chart.cpl); }, { audition: false }));
-  $('#line-del').addEventListener('click', () => {
-    const n = S.chart.cells.length, cpl = S.chart.cpl;
-    if (n <= cpl) return;
-    if (S.chart.cells.slice(n - cpl).some(Boolean)) { toast("The last line isn't empty — clear it first"); return; }
-    edit(() => { S.chart.cells.length = n - cpl; S.chart.marks = shiftMarks(S.chart.marks, (n - cpl) / S.chart.bpb, -(cpl / S.chart.bpb)); }, { audition: false });
-    setSel(Math.min(S.sel.a, S.chart.cells.length - 1), Math.min(S.sel.b, S.chart.cells.length - 1));
-  });
   document.querySelectorAll('.sheet').forEach((sh) => sh.addEventListener('click', (e) => { if (e.target === sh || e.target.hasAttribute('data-close')) closeSheets(); }));
   document.addEventListener('keydown', (e) => {               // hardware keyboard shortcuts (iPad / Mac)
     if (sheetOpen()) { if (e.key === 'Escape') closeSheets(); return; }
@@ -1046,8 +1095,42 @@ function updateTopbar() {
   renderTransport();
   updateSyncLabel();
 }
+// ---- backups: every chart in one file (each Home Screen app keeps its own charts, so this moves them)
+function backupText() {
+  syncCurrent();
+  return JSON.stringify({ app: 'ifake', kind: 'backup', version: 1, saved: new Date().toISOString(), charts: S.charts }, null, 1);
+}
+async function saveBackup() {
+  const name = `iFake charts ${new Date().toISOString().slice(0, 10)}.json`;
+  const file = new File([backupText()], name, { type: 'application/json' });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+// a chart already here keeps whichever copy was changed last; restored charts are no longer "deleted"
+function restoreBackup(text) {
+  let data;
+  try { data = JSON.parse(text); } catch (e) { throw new Error("That isn't a backup file"); }
+  const charts = data && Array.isArray(data.charts) ? data.charts : null;
+  if (!charts) throw new Error("That isn't an iFake backup");
+  syncCurrent();
+  let added = 0, updated = 0;
+  for (const c of charts) {
+    if (!c || !c.id || !Array.isArray(c.cells)) continue;
+    try { deserialise(c); } catch (e) { continue; }
+    delete S.deleted[c.id];
+    const i = S.charts.findIndex((x) => x.id === c.id);
+    if (i < 0) { S.charts.push(c); added++; }
+    else if ((c.updatedAt || 0) > (S.charts[i].updatedAt || 0)) { S.charts[i] = c; updated++; }
+  }
+  const cur = S.charts.find((x) => x.id === S.chart.id);
+  if (cur) { S.chart = deserialise(cur); invalidate(); }
+  persist(); renderAll(); renderCharts();
+  toast(added || updated ? `Restored: ${added} new, ${updated} updated` : 'Nothing new in that backup');
+}
 function updateSyncLabel() {
   const el = $('#sync-status');
+  if (!el) return;
   const st = store.status;
   el.textContent = st === 'synced' ? 'Saved to your account' : st === 'syncing' ? 'Saving to your account…'
     : st === 'sync failed' ? 'Account sync failed — saved in this browser' : st === 'unsaved' ? 'Not saved — this browser blocks storage' : 'Saved in this browser';
@@ -1135,8 +1218,16 @@ function renderSettings() {
   on('st-cpl', 'change', (e) => { edit(() => { S.chart.cpl = +e.target.value; padCells(S.chart); }, { audition: false }); S.settings.lastCpl = S.chart.cpl; });
   on('st-bpb', 'change', (e) => {
     const bpb = +e.target.value;
+    let dropped = 0;
     edit(() => {
-      S.chart.bpb = bpb;
+      const old = S.chart.bpb, cells = [], at = (i) => Math.floor(i / old) * bpb + Math.min(i % old, bpb - 1);
+      for (let b = 0; b * old < S.chart.cells.length; b++) {
+        const bar = S.chart.cells.slice(b * old, b * old + old);
+        for (let k = 0; k < bpb; k++) cells.push(bar[k] || null);
+        dropped += bar.slice(bpb).filter(Boolean).length;
+      }
+      if (S.sel) S.sel = { ...S.sel, a: at(S.sel.a), b: at(S.sel.b) };
+      S.chart.cells = cells; S.chart.bpb = bpb;
       if (S.chart.cpl % bpb) {                        // keep whole bars on each line
         const choices = cplChoices(bpb);
         S.chart.cpl = choices.reduce((best, n) => (Math.abs(n - S.chart.cpl) < Math.abs(best - S.chart.cpl) ? n : best), choices[0]);
@@ -1144,6 +1235,7 @@ function renderSettings() {
       }
     }, { audition: false });
     S.settings.lastBpb = bpb; S.settings.lastCpl = S.chart.cpl;
+    if (dropped) toast(`${dropped} chord${dropped > 1 ? 's' : ''} past beat ${bpb} removed · Undo brings ${dropped > 1 ? 'them' : 'it'} back`);
     renderSettings();
   });
 }
@@ -1153,20 +1245,27 @@ function renderCharts() {
   const items = S.charts.map((c) => `
     <div class="chart-item${c.id === S.chart.id ? ' current' : ''}" data-id="${c.id}">
       <span class="name" data-open>${esc(c.title)}</span>
-      <button data-dup>Duplicate</button><button data-del>Delete</button>
+      <button data-dup>Duplicate</button><button data-del class="del">Delete</button>
     </div>`).join('');
   $('#charts-body').innerHTML = `
-    <div class="btn-row"><button class="btn" id="ch-new">New chart</button><button class="btn secondary" id="ch-demo">Add demo chart</button></div>
+    <div class="btn-row"><button class="btn" id="ch-new">New chart</button></div>
     <div class="group">${items}</div>
-    <div class="group"><h3>Export this chart as text</h3>
+    <p class="hint" id="sync-status"></p>
+    <details class="group more"><summary>Export, import and backup</summary>
+      <h3>This chart as text</h3>
       <textarea class="io" id="ch-export" readonly>${esc(chartToText(S.chart))}</textarea>
       <div class="btn-row"><button class="btn secondary" id="ch-copy">Copy</button></div>
-    </div>
-    <div class="group"><h3>Import a chart from text</h3>
+      <h3>Import</h3>
       <textarea class="io" id="ch-import" placeholder="Title: My tune&#10;Cells: 16/line, 4/bar&#10;| C-7 . . . | F7 . . . | B♭Δ7 . . . | . . . . |"></textarea>
-      <div class="btn-row"><button class="btn secondary" id="ch-import-go">Import as new chart</button></div>
+      <div class="btn-row"><button class="btn secondary" id="ch-import-go">Import</button></div>
       <p class="hint" id="ch-import-msg"></p>
-    </div>`;
+      <h3>All charts</h3>
+      <p class="hint">A backup holds every chart, to move them to another device or to the app at a new address.</p>
+      <div class="btn-row"><button class="btn secondary" id="ch-backup">Save a backup</button><button class="btn secondary" id="ch-backup-copy">Copy backup</button>
+        <label class="btn secondary file">Restore a backup…<input type="file" id="ch-restore" accept=".json,application/json,text/plain" hidden></label></div>
+      <div class="btn-row"><button class="btn secondary" id="ch-demo">Add the demo chart</button></div>
+    </details>`;
+  updateSyncLabel();
   $('#charts-body').querySelectorAll('.chart-item').forEach((row) => {
     const id = row.dataset.id;
     row.querySelector('[data-open]').addEventListener('click', () => { switchChart(id); closeSheets(); });
@@ -1176,7 +1275,7 @@ function renderCharts() {
       S.charts.unshift({ ...serialise(src), updatedAt: Date.now() }); switchChart(src.id); renderCharts();
     });
     row.querySelector('[data-del]').addEventListener('click', () => {
-      if (row.dataset.confirm !== '1') { row.dataset.confirm = '1'; row.querySelector('[data-del]').textContent = 'Confirm'; return; }
+      if (row.dataset.confirm !== '1') { row.dataset.confirm = '1'; row.querySelector('[data-del]').textContent = 'Delete?'; return; }
       S.charts = S.charts.filter((c) => c.id !== id);
       S.deleted[id] = Date.now();
       if (!S.charts.length) S.charts = [{ ...serialise(blankChart()), updatedAt: Date.now() }];
@@ -1190,8 +1289,12 @@ function renderCharts() {
     const ta = $('#ch-export');
     try { await navigator.clipboard.writeText(ta.value); toast('Copied'); } catch (e) { ta.focus(); ta.select(); toast('Select all and copy'); }
   });
+  $('#ch-backup').addEventListener('click', saveBackup);
+  $('#ch-backup-copy').addEventListener('click', async () => { try { await navigator.clipboard.writeText(backupText()); toast('Backup copied'); } catch (e) { toast("Couldn't copy: use Save a backup"); } });
+  $('#ch-restore').addEventListener('change', async (e) => { const f = e.target.files[0]; if (f) { try { restoreBackup(await f.text()); } catch (err) { toast(err.message); } } });
   $('#ch-import-go').addEventListener('click', () => {
     try {
+      if (/^\s*\{/.test($('#ch-import').value)) { restoreBackup($('#ch-import').value); return; }     // a backup pasted in
       const c = textToChart($('#ch-import').value);
       if (!c.cells.some(Boolean)) throw new Error('No chords found — bars must start with "|"');
       S.charts.unshift({ ...serialise(c), updatedAt: Date.now() }); switchChart(c.id); closeSheets(); toast('Imported');
@@ -1244,7 +1347,25 @@ async function boot() {
   // offline / Home Screen install when served from its own site (not inside claude.ai)
   if ('serviceWorker' in navigator && window.self === window.top && (location.protocol === 'https:' || location.hostname === 'localhost') && !location.hostname.endsWith('claude.ai')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
+    watchForUpdates();
   }
   window.__chordpad = { S, engine, seq, store, timeline, keyAction, setSel, applyType, planText, playRange, persist, libraryData };   // for testing
 }
 boot();
+
+// A Home Screen app is resumed rather than reloaded, so look for a new build whenever it comes back to the
+// front; when one has taken over, offer a reload.
+function watchForUpdates() {
+  const sw = navigator.serviceWorker, had = !!sw.controller;
+  sw.addEventListener('controllerchange', () => { if (had) showUpdateBar(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') sw.getRegistration().then((r) => r && r.update()).catch(() => {});
+  });
+}
+function showUpdateBar() {
+  if (document.getElementById('update-bar')) return;
+  const b = document.createElement('button');
+  b.id = 'update-bar'; b.textContent = 'Update ready · tap to reload';
+  b.onclick = () => { try { persist(); } catch (e) { /* saved already */ } location.reload(); };
+  document.body.appendChild(b);
+}

@@ -41,10 +41,12 @@ export function spellMidi(midi, fifths) {
     const a = keyAccidental(fifths, l);
     if (mod(NAT_PC[l] + a, 12) === pc) return { l, a, o: Math.floor((midi - NAT_PC[l] - a) / 12) - 1 };
   }
+  // not in the key: a natural if there is one (G in A major), else flats in flat keys and sharps otherwise
   const useFlat = fifths < 0;
-  for (let l = 0; l < 7; l++) {
-    const a = useFlat ? -1 : 1;
-    if (mod(NAT_PC[l] + a, 12) === pc) return { l, a, o: Math.floor((midi - NAT_PC[l] - a) / 12) - 1 };
+  for (const a of [0, useFlat ? -1 : 1, useFlat ? 1 : -1]) {
+    for (let l = 0; l < 7; l++) {
+      if (mod(NAT_PC[l] + a, 12) === pc) return { l, a, o: Math.floor((midi - NAT_PC[l] - a) / 12) - 1 };
+    }
   }
   return null;
 }
@@ -307,18 +309,24 @@ export function melodyText(song, from = 0, to = song.measures.length) {
   return bars.join(' | ');
 }
 
-// put parsed bars into measures starting at measure `at`; each bar must fill its measure exactly
+// put parsed bars into measures starting at measure `at`; each bar must fill its measure exactly.
+// Every bar is checked before anything changes, so a mistake leaves the song as it was.
 export function setMelody(song, bars, at = 0) {
+  const whole = (ev) => ev.length === 1 && ev[0].r && ev[0].b === 1 && !ev[0].d && !ev[0].tup;   // an empty bar, any length
+  bars.forEach((ev, k) => {
+    if (whole(ev)) return;
+    const m = at + k, len = song.measures[m] ? song.measures[m].len : barLen(song);
+    const total = ev.reduce((s, e) => s + evTicks(e), 0);
+    if (Math.abs(total - len) > 0.5) {
+      const beats = (x) => +(x / beatTicks(song.time.den)).toFixed(3);
+      throw new Error(`bar ${m + (song.pickup ? 0 : 1)} has ${beats(total)} beats of notes; it needs ${beats(len)}`);
+    }
+  });
   bars.forEach((ev, k) => {
     const m = at + k;
     ensureMeasure(song, m);
     const meas = song.measures[m];
-    const total = ev.reduce((s, e) => s + evTicks(e), 0);
-    if (Math.abs(total - meas.len) > 0.5) {
-      const beats = (x) => +(x / beatTicks(song.time.den)).toFixed(3);
-      throw new Error(`bar ${m + (song.pickup ? 0 : 1)} has ${beats(total)} beats of notes; it needs ${beats(meas.len)}`);
-    }
-    meas.ev = ev.length === 1 && ev[0].r && ev[0].b === 1 ? restsFor(0, meas.len, true) : ev;
+    meas.ev = whole(ev) ? restsFor(0, meas.len, true) : ev;
   });
 }
 

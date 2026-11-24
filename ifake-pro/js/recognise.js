@@ -18,7 +18,7 @@ function table() {
   if (TABLE) return TABLE;
   TABLE = new Map();
   const add = (pcs, t, rank) => {
-    if (pcs.length < 3) return;
+    if (pcs.length < 3 && t !== '5') return;          // two notes only name a power chord
     const k = pcs.join(','), had = TABLE.get(k);
     if (!had || had.rank > rank) TABLE.set(k, { t, rank });
   };
@@ -73,7 +73,8 @@ function rootName(midi, fifths) {
   let l = NAT.findIndex((n, j) => mod12(n + keyAccidental(fifths, j)) === pc);
   if (l >= 0) return 'CDEFGAB'[l] + accText(keyAccidental(fifths, l));
   if ((l = NAT.indexOf(pc)) >= 0) return 'CDEFGAB'[l];
-  return fifths < 0 ? 'CDEFGAB'[NAT.indexOf(mod12(pc + 1))] + '♭' : 'CDEFGAB'[NAT.indexOf(mod12(pc - 1))] + '♯';
+  // outside the key: chord roots read as flats (B♭7, E♭, A♭, D♭), except F♯ in keys without flats
+  return pc === 6 && fifths >= 0 ? 'F♯' : 'CDEFGAB'[NAT.indexOf(mod12(pc + 1))] + '♭';
 }
 const accText = (a) => (a > 0 ? '♯'.repeat(a) : '♭'.repeat(-a));
 

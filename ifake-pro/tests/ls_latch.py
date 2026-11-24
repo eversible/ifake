@@ -22,6 +22,9 @@ async def main():
             r = await J(f"(() => {{ const k = document.querySelector('#bigpiano .pk[data-midi=\"{midi}\"]'); const b = k.getBoundingClientRect(); return [b.x + b.width/2, b.y + b.height * (k.classList.contains('b') ? 0.5 : 0.85)]; }})()")
             await page.touchscreen.tap(*r); await page.wait_for_timeout(60)
         async def tapb(w):
+            if w in ('clear', 'follow', 'latch'):          # these live in the piano bar's ⋯ menu
+                m = await J("(() => { const b = document.querySelector('#bigpiano [data-bp=\"more\"]').getBoundingClientRect(); return [b.x + b.width/2, b.y + b.height/2]; })()")
+                await page.touchscreen.tap(*m); await page.wait_for_timeout(80)
             r = await J(f"(() => {{ const b = document.querySelector('#bigpiano [data-bp=\"{w}\"]').getBoundingClientRect(); return [b.x + b.width/2, b.y + b.height/2]; }})()")
             await page.touchscreen.tap(*r); await page.wait_for_timeout(80)
         for m in [50, 53, 57]: await tapk(m)

@@ -7,12 +7,15 @@
 // any other beat. On the other lines the margin holds the bar numbers.
 import { slotList } from './song.js';
 
-const LINE_H = 66, CELL_Y = 14, CELL_H = 50, MARGIN = 8;
+const CELL_Y = 14, MARGIN = 8;
 
-export function layoutGrid(song, width, barsPerLine) {
+// height: the chart area's height; when the chart is short, its lines grow (66 → up to 104 px) to fill it
+export function layoutGrid(song, width, barsPerLine, height = 0) {
   const per = Math.max(1, barsPerLine), inner = Math.max(120, width - 2 * MARGIN), num = song.time.num;
   const first = song.measures[0], pick = song.pickup && first && first.ch.length < num ? first.ch.length : 0;
   const barW = inner / (per + pick / num), gutter = pick ? barW * (pick / num) : 0;
+  const nLines = Math.max(1, Math.ceil((song.measures.length - (pick ? 1 : 0)) / per));
+  const LINE_H = Math.max(66, Math.min(104, Math.floor((height - 10) / nLines))), CELL_H = LINE_H - 16;
   const measures = [];
   let lines = 1;
   song.measures.forEach((meas, m) => {
@@ -28,5 +31,5 @@ export function layoutGrid(song, width, barsPerLine) {
       grid: true,
     });
   });
-  return { measures, height: lines * LINE_H + 10, scale: 1, grid: true, gutter };
+  return { measures, height: lines * LINE_H + 10, scale: 1, grid: true, gutter, cellH: CELL_H };
 }
