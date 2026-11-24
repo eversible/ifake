@@ -507,17 +507,26 @@ label.btn.file { display: inline-flex; align-items: center; cursor: pointer; }
 body.split .sheet { align-items: flex-start; }
 body.split .sheet-card { max-height: calc(var(--seg0) - 8px); margin-top: env(safe-area-inset-top); border-radius: 0 0 14px 14px; }
 
-/* split view fills the screen in every posture (no stale 100dvh gap at the bottom) */
-body.split #app { position: fixed; inset: 0; height: auto; }
-/* the Duo's tall status-bar band holds ☰, the title, Even and ⚙ (left of the status circle) */
+/* split view fills the whole screen: iOS reports a Home Screen app's height without the status bar while the
+   page starts under it, which left a status-bar-tall gap at the bottom; --app-h is measured in applySplit */
+body.split #app { position: fixed; top: 0; left: 0; right: 0; bottom: auto; height: var(--app-h, 100dvh); }
+/* the Duo's tall status-bar band: iOS keeps taps there for itself, so only the song title sits in it
+   (left of the status icons); ☰ goes left of the tabs, Even and ⚙ to their right */
 body.split.head-up #app { padding-top: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   grid-template-rows: env(safe-area-inset-top) calc(var(--seg0) - env(safe-area-inset-top)) var(--hinge) 52px 38px minmax(0, 1fr) var(--piano-h);
-  grid-template-areas: "head head head" "chart chart chart" "hinge hinge hinge" "transport transport transport" "tabs tabs tabs" "kb kb kb" "piano piano piano"; }
+  grid-template-areas: "head head head head" "chart chart chart chart" "hinge hinge hinge hinge" "transport transport transport transport"
+    "menu tabs even gear" "kb kb kb kb" "piano piano piano piano"; }
 body.split.head-up[data-layer="bars"] #app {
   grid-template-rows: env(safe-area-inset-top) calc(var(--seg0) - env(safe-area-inset-top)) var(--hinge) 52px 38px minmax(0, auto) minmax(var(--piano-h), 1fr); }
-body.split.head-up #topbar { grid-area: head; align-self: end; justify-self: start; width: calc(100% - 150px); box-sizing: border-box;
-  padding: 0 8px 6px; background: none; display: flex; align-items: center; gap: 8px; }
-body.split.head-up #title { display: block; flex: 1; min-width: 0; color: #f2f2f7; font: 600 17px var(--ui-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.split.head-up #topbar { display: contents; }
+body.split.head-up #title { grid-area: head; align-self: end; display: block; max-width: calc(100% - 250px); box-sizing: border-box; padding: 0 12px 10px;
+  color: #f2f2f7; font: 600 17px var(--ui-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+body.split.head-up #btn-charts { grid-area: menu; margin: 3px 0 0 4px; }
+body.split.head-up #btn-even { grid-area: even; margin: 3px 0 0 0; }
+body.split.head-up #btn-settings { grid-area: gear; margin: 3px 4px 0 4px; }
+body.split.head-up #topbar .tb { height: 34px; min-height: 0; }
+body.split.head-up #tabs { margin: 3px 4px 0; }
 /* every white key named: C keeps its octave number and stays stronger */
 #bigpiano .pk.w.c { color: #6e6e73; font-weight: 600; }
 /* notes sounding beyond the keyboard: that side's arrow lights up */

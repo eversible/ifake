@@ -475,21 +475,35 @@ function foldableScreen() {
 }
 // the Home Screen app fills the screen from its top edge (under the status bar)
 const standalone = () => { try { return navigator.standalone === true || matchMedia('(display-mode: standalone)').matches; } catch (e) { return false; } };
-// how tall the status-bar band is (0 in Safari or inside another app)
-function safeTop() {
+// measure a CSS height (env(), vh) with a throwaway element
+function cssHeight(v) {
   const d = document.createElement('div');
-  d.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top);visibility:hidden;pointer-events:none';
+  d.style.cssText = `position:fixed;top:0;left:0;width:1px;height:${v};visibility:hidden;pointer-events:none`;
   document.body.appendChild(d); const h = d.getBoundingClientRect().height; d.remove(); return h;
+}
+// how tall the status-bar band is (0 in Safari or inside another app)
+const safeTop = () => cssHeight('env(safe-area-inset-top)');
+// the height the app really has. A Home Screen app on iOS can report its height without the status bar while
+// the page starts underneath it, leaving a status-bar-tall strip at the bottom; 100vh (or the screen) is right
+function appHeight() {
+  const h = window.innerHeight;
+  if (!standalone()) return h;
+  const land = matchMedia('(orientation: landscape)').matches;
+  const tall = land ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+  const gap = tall - h;
+  return Math.round(Math.max(h, cssHeight('100vh'), gap > 0 && gap <= safeTop() + 6 ? tall : 0));
 }
 function applySplit() {
   const mode = S.settings.split || 'auto', sg = foldSegments();
   let on = mode === 'on' || (mode === 'auto' && (!!sg || foldableScreen()));
   const root = document.documentElement.style;
   const adj = S.settings.foldAdjust || 0;
+  const appH = appHeight();
+  root.setProperty('--app-h', appH + 'px');
   if (on && standalone()) {
     // a Home Screen app: the line stays put on the screen whether the phone is folded or flat, so the fold
     // reported while folded is only used to switch the split on
-    const h = window.innerHeight, land = matchMedia('(orientation: landscape)').matches;
+    const h = appH, land = matchMedia('(orientation: landscape)').matches;
     const tall = land ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
     const mid = Math.abs(tall - h) < 140 ? Math.round(tall / 2) : Math.round(h / 2);
     const top = Math.max(150, Math.min(h - 150, mid + adj));
