@@ -85,3 +85,4 @@ while Mez was away. Each of those rows lists the alternatives so it can be revis
 | Tap the chord name | Plays the keys again, named or not (the playing chord while playing) |
 | Sliding the keyboard | The big piano is one strip from C1 to C7: a sideways swipe slides it with the finger (a flick carries on a little) and it settles on the nearest white key; ‹ › slide an octave. A touch that turns into a swipe doesn't play or toggle a key, so toggles happen on release; held keys still sound on touch (sliding across keys no longer glides between notes) |
 | Swing / Straight button | Fixed width, so it doesn't jump when toggled |
+| 7th chords with an 11th but no 9th | Named like the 13ths: C-7(11), Cø7(11), C7(11), CΔ7(11) (before, C E G B♭ F had no name and C E♭ G♭ B♭ F came out as E♭-6/9/C) |
