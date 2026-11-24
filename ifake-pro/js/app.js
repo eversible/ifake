@@ -473,12 +473,28 @@ function foldableScreen() {
     return a >= 640 && a <= 700 && b >= 820 && b <= 1000 && window.innerWidth < window.innerHeight;
   } catch (e) { return false; }
 }
+// the Home Screen app fills the screen from its top edge (under the status bar)
+const standalone = () => { try { return navigator.standalone === true || matchMedia('(display-mode: standalone)').matches; } catch (e) { return false; } };
+// how tall the status-bar band is (0 in Safari or inside another app)
+function safeTop() {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top);visibility:hidden;pointer-events:none';
+  document.body.appendChild(d); const h = d.getBoundingClientRect().height; d.remove(); return h;
+}
 function applySplit() {
   const mode = S.settings.split || 'auto', sg = foldSegments();
   let on = mode === 'on' || (mode === 'auto' && (!!sg || foldableScreen()));
   const root = document.documentElement.style;
   const adj = S.settings.foldAdjust || 0;
-  if (on && sg && mode !== 'off') {
+  if (on && standalone()) {
+    // a Home Screen app: the line stays put on the screen whether the phone is folded or flat, so the fold
+    // reported while folded is only used to switch the split on
+    const h = window.innerHeight, land = matchMedia('(orientation: landscape)').matches;
+    const tall = land ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+    const mid = Math.abs(tall - h) < 140 ? Math.round(tall / 2) : Math.round(h / 2);
+    const top = Math.max(150, Math.min(h - 150, mid + adj));
+    root.setProperty('--seg0', top + 'px'); root.setProperty('--hinge', '0px'); root.setProperty('--seg1', h - top + 'px');
+  } else if (on && sg && mode !== 'off') {
     const a = Math.max(150 - sg[0].height, Math.min(sg[1].height - 150, adj));
     root.setProperty('--seg0', sg[0].height + a + 'px');
     root.setProperty('--hinge', Math.max(0, sg[1].top - sg[0].top - sg[0].height) + 'px');
@@ -492,6 +508,8 @@ function applySplit() {
   }
   const was = document.body.classList.contains('split');
   document.body.classList.toggle('split', on);
+  // a tall status-bar band (the Duo's): the song title, ☰, Even and ⚙ move up into it, left of the status circle
+  document.body.classList.toggle('head-up', on && safeTop() >= 40);
   $('#bigpiano').hidden = !on;
   if (on && (!was || S.bigOct !== bigOctaves())) buildBigPiano();
   return on !== was;
@@ -509,7 +527,8 @@ function buildBigPiano() {
   for (let m = base; m <= base + span; m++) if (![1, 3, 6, 8, 10].includes(mod(m, 12))) whites.push(m);
   const ww = 100 / whites.length;
   whites.forEach((m, k) => {
-    keys += `<div class="pk w" data-midi="${m}" style="left:${k * ww}%;width:${ww}%">${mod(m, 12) === 0 ? 'C' + (Math.floor(m / 12) - 1) : ''}</div>`;
+    const isC = mod(m, 12) === 0, lbl = isC ? 'C' + (Math.floor(m / 12) - 1) : S.settings.keyNames === 'all' ? 'CDEFGAB'[[0, 2, 4, 5, 7, 9, 11].indexOf(mod(m, 12))] : '';
+    keys += `<div class="pk w${isC ? ' c' : ''}" data-midi="${m}" style="left:${k * ww}%;width:${ww}%">${lbl}</div>`;
     if (m + 1 <= base + span && [1, 3, 6, 8, 10].includes(mod(m + 1, 12))) keys += `<div class="pk b" data-midi="${m + 1}" style="left:${(k + 0.66) * ww}%;width:${ww * 0.68}%"></div>`;
   });
   el.innerHTML = `<div class="bp-bar">
@@ -577,6 +596,13 @@ function updateBigPiano() {
     const m = +k.dataset.midi;
     k.classList.toggle('on', on.has(m)); k.classList.toggle('play', play.has(m)); k.classList.toggle('mel', melNow.has(m));
   });
+  // something sounding beyond the keys: light the octave arrow on that side (orange melody, green chord)
+  const lo = S.bigBase, hi = S.bigBase + 12 * (S.bigOct || bigOctaves());
+  for (const [sel, off] of [['[data-bp="down"]', (m) => m < lo], ['[data-bp="up"]', (m) => m > hi]]) {
+    const b = el.querySelector(sel);
+    b.classList.toggle('off-mel', [...melNow].some(off));
+    b.classList.toggle('off-play', !b.classList.contains('off-mel') && [...play].some(off));
+  }
   const name = el.querySelector('.bp-name');
   const latchBtn = el.querySelector('[data-bp="latch"]');
   latchBtn.hidden = !draft; latchBtn.classList.toggle('on', !!S.settings.draftLatch);
@@ -1619,6 +1645,7 @@ function renderSettings() {
     <div class="group"><h3>Volume</h3>${range('st-vm', 'Melody', 0, 1, 0.01, s.volMelody)}${range('st-vc', 'Chords', 0, 1, 0.01, s.volChord)}${range('st-vb', 'Bass', 0, 1, 0.01, s.volBass)}${range('st-vk', 'Click', 0, 1, 0.01, s.volClick)}</div>
     <div class="group"><h3>Display &amp; editing</h3>
       <div class="row"><label for="st-split">Split (iPhone Duo half-folded)</label><select id="st-split">${optionList([{ id: 'auto', label: 'Auto' }, { id: 'on', label: 'On' }, { id: 'off', label: 'Off' }], s.split || 'auto')}</select></div>
+      <div class="row"><label for="st-keynames">Piano key names</label><select id="st-keynames">${optionList([{ id: 'c', label: 'C only' }, { id: 'all', label: 'Every white key' }], s.keyNames || 'c')}</select></div>
       <div class="row"><label>Split line<span class="row-sub">${s.foldAdjust ? `moved ${Math.abs(s.foldAdjust)} pt ${s.foldAdjust > 0 ? 'down' : 'up'}` : 'on the fold'}</span></label><button class="btn" id="st-fold">Move…</button></div>
       <div class="row"><label for="st-bpl">Bars per line (score)</label><select id="st-bpl">${optionList([{ id: 'auto', label: 'Auto' }, ...[1, 2, 3, 4, 5, 6].map((n) => ({ id: String(n), label: n }))], String(s.scoreBars || 'auto'))}</select></div>
       <div class="row"><label for="st-gbl">Bars per line (chord grid)</label><select id="st-gbl">${optionList([1, 2, 3, 4, 5, 6, 8].map((n) => ({ id: String(n), label: n })), String(s.gridBars || 4))}</select></div>
@@ -1660,6 +1687,7 @@ function renderSettings() {
   on('st-nbars', 'change', (e) => { setBarCount(+e.target.value); renderSettings(); });
   on('st-split', 'change', (e) => { setS('split', e.target.value); applySplit(); render(); });
   on('st-fold', 'click', () => { closeSheets(); alignFold(); });
+  on('st-keynames', 'change', (e) => { setS('keyNames', e.target.value); buildBigPiano(); });
   for (const [id, key] of [['st-swing', 'swingAmt'], ['st-reverb', 'reverb'], ['st-vm', 'volMelody'], ['st-vc', 'volChord'], ['st-vb', 'volBass'], ['st-vk', 'volClick']]) {
     on(id, 'input', (e) => { setS(key, +e.target.value); $('#' + id + '-v').textContent = Math.round(e.target.value * 100) + '%'; });
   }
@@ -1870,6 +1898,7 @@ function bindGlobal() {
   });
   let rt = null;
   window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { applySplit(); render(); }, 150); });
+  try { if (navigator.devicePosture) navigator.devicePosture.addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
   // fold changes (iPhone Duo): posture and segment changes also re-lay the page out
   try { if (navigator.devicePosture) navigator.devicePosture.addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
   try { matchMedia('(vertical-viewport-segments: 2)').addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }

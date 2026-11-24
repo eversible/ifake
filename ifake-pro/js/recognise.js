@@ -8,7 +8,9 @@ import { keyAccidental } from './melody.js';
 const TYPES = ['', '-', '7', '-7', 'Δ7', 'ø7', 'o7', 'o', '+', '5', '(sus4)', '(sus2)', '6', '-6', '-Δ7', '+7', '7(sus4)',
   '6/9', '-6/9', '(add9)', '-(add9)', '9', 'Δ9', '-9', '7(♭9)', '7(♯9)', '7(♯11)', '7(♭13)', '7(♭5)', 'Δ7(♯11)', 'Δ7(♯5)',
   '-11', '11', '13', 'Δ13', '-13', '9(sus4)', '13(sus4)', '7(♭9, ♯11)', '7(♭9, ♭13)', '7(♯9, ♭13)', '7(♯9, ♯11)', '7alt',
-  '9(♯11)', '13(♭9)', '13(♯11)', '-Δ9', 'ø9', '(add11)', '-(add11)', 'Δ9(♯11)', '+9', '9(♭13)', 'ø11', '13(♭9, ♯11)'];
+  '9(♯11)', '13(♭9)', '13(♯11)', '-Δ9', 'ø9', '(add11)', '-(add11)', 'Δ9(♯11)', '+9', '9(♭13)', 'ø11', '13(♭9, ♯11)',
+  // a 13th or 11th with no 9th is named as such (13 and -11 play the 9th when written)
+  '7(13)', 'Δ7(13)', '-7(13)', '-7(11)'];
 
 const mod12 = (n) => ((n % 12) + 12) % 12;
 const pcsOf = (c) => [...new Set(chordIntervals(c).map((i) => mod12(ivlSemis(i))))].sort((a, b) => a - b);
@@ -25,15 +27,11 @@ function table() {
   TYPES.forEach((t, i) => add(pcsOf(parseChord('C' + t)), t, i));
   // voicings leave notes out, which makes a name a little less likely:
   //  - the 5th of a chord with a 7th, or of a 6/9 (a "6 chord without its 5th", C E A, is really A-/C)
-  //  - the 9th under a 13th (C E B♭ A is C13) or under a minor 11th (C E♭ B♭ F is C-11)
   TYPES.forEach((t, i) => {
     const p = pcsOf(parseChord('C' + t)), has = (x) => p.includes(x), seventh = has(10) || has(11);
     const no5 = has(7) && p.length >= 4 && (seventh || (has(9) && has(2)));
-    const no9 = has(2) && seventh && (has(9) || (has(5) && has(3)));
     const without = (...xs) => p.filter((x) => !xs.includes(x));
     if (no5) add(without(7), t, i + 50);
-    if (no9) add(without(2), t, i + 60);
-    if (no5 && no9) add(without(7, 2), t, i + 70);
   });
   return TABLE;
 }

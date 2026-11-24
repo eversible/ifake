@@ -75,3 +75,8 @@ while Mez was away. Each of those rows lists the alternatives so it can be revis
 | Chord symbols | Sized to the cell (bigger on a short chart, which also gets taller rows); a crowded one puts extensions and bass on a second line; only then do extensions hide — the bass never does. A faint tint marks the whole selected / playing bar | Shrink, then hide extensions and bass behind … |
 | Songs sheet & backups | The list first; text export, import and a whole-library backup (share/save a .json, copy, restore — newest copy of each song wins) folded under one row; Delete is red and asks once | Export/Import always open; one song at a time |
 | Updates | The worker fetches its files fresh at install and caches the default instruments; the sample cache is named after the sample set; a Home Screen app checks for a new build when it comes back to the front and offers “Update ready · tap to reload” | Updates only on a cold start |
+| Split line on the Duo | In the Home Screen app the line is fixed to the screen (its middle plus your offset) whether the phone is folded or flat; the reported fold only switches the split on. The page fills the screen in every posture |
+| Status-bar band | When the band is tall (the Duo's ~82 pt), ☰, the song title, Even and ⚙ sit in it, left of the status circle; elsewhere they stay in the control row |
+| Piano key names | Setting: C only (default) or every white key; C keeps its octave number |
+| Notes off the keyboard | While playing, the ‹ or › arrow lights orange (melody) or green (chord) when a sounding note is beyond that edge |
+| 13ths and 11ths without the 9th | Named exactly: F A C E D is FΔ7(13), F A C E G D is FΔ13 (13 and -11 play the 9th when written), so Write never adds a note you didn't press |
