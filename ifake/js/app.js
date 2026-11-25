@@ -1476,6 +1476,10 @@ async function boot() {
   const flush = () => { if (persistTimer) persist(); store.flushNow(); };
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+  // leaving the app: stop playing, and let the sound start afresh on the first tap back (iOS can leave it stuck)
+  const away = () => { if (seq.playing) { startToken = 0; seq.stop(); clearPlayhead(); renderLoop(); } engine.away(); };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') away(); });
+  window.addEventListener('pagehide', away);
   // audio: create the context early so samples decode before the first tap
   try { engine.ensureContext(); } catch (e) { /* no Web Audio */ }
   applyAudioSettings();

@@ -584,6 +584,8 @@ function buildBigPiano() {
 // slot: no keys), unless you've built something you haven't written yet — then it stays, ready to Write there.
 function chordEdit() {
   const ck = S.ck, slot = `${S.cs.m}:${S.cs.beat}:${S.cs.k || 0}`, own = csChord(), text = own ? chordText(own) : '';
+  // selecting another chord starts again from it (changes not yet written are dropped, with a note)
+  if (slot !== ck.slot && ck.dirty && ck.slot) { ck.dirty = false; queueMicrotask(() => toast('Draft keys now start from the selected chord (the unwritten ones were dropped)')); }
   if (!ck.dirty && (slot !== ck.slot || text !== ck.text)) ck.notes = own ? chordKeys(own, S.bigBase) : [];
   ck.slot = slot; ck.text = text;
   return ck;
@@ -596,6 +598,10 @@ const latchOn = () => (S.layer === 'melody' ? !!S.settings.draftLatchMelody : S.
 const followSel = () => (S.layer === 'chords' ? S.settings.draftFollowChords !== false : S.layer === 'melody' ? !!S.settings.draftFollowMelody : false);
 function noteEdit() {
   const nk = S.nk, e = selEv(), key = S.sel ? `${S.sel.m}:${S.sel.i}:${e && !e.r ? midiOf(e.p) : 'r'}` : '';
+  // selecting another note starts again from it
+  const at = S.sel ? `${S.sel.m}:${S.sel.i}` : '';
+  if (at !== nk.at && nk.dirty && nk.at) nk.dirty = false;
+  nk.at = at;
   if (!nk.dirty && key !== nk.key) {
     nk.notes = e && !e.r ? [midiOf(e.p)] : [];
     // keep the note on the keyboard: move the piano by octaves if it's off either end
@@ -2075,6 +2081,10 @@ function bindGlobal() {
   const flush = () => { if (persistTimer) persist(); store.flushNow(); };
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+  // leaving the app: pause, and let the sound start afresh on the first tap back (iOS can leave it stuck)
+  const away = () => { if (seq.playing) pausePlay(); engine.away(); };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') away(); });
+  window.addEventListener('pagehide', away);
 }
 function renderAll() { applySplit(); buildPanel(); render(); updateSyncLabel(); }
 

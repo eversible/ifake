@@ -118,8 +118,20 @@ export class AudioEngine {
     return ctx;
   }
 
+  // The app went to the background. iOS can leave an audio context stuck after that (silent, or never
+  // resuming), so the first tap after coming back starts a fresh one; the loaded samples carry over.
+  away() { if (this.ctx) this._awayAt = performance.now(); }
+  _renew() {
+    const old = this.ctx;
+    this.ctx = null; this._unlocked = false;
+    try { old.close(); } catch (e) { /* already closed */ }
+    this.ensureContext();
+  }
+
   // Must be called from a user gesture on iOS.
   unlock() {
+    if (this.ctx && this._awayAt && (performance.now() - this._awayAt > 1000 || this.ctx.state !== 'running')) this._renew();
+    this._awayAt = 0;
     const ctx = this.ensureContext();
     try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* older Safari */ }
     if (ctx.state !== 'running') ctx.resume().catch(() => {});
