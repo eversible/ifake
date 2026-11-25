@@ -584,8 +584,12 @@ function buildBigPiano() {
 // slot: no keys), unless you've built something you haven't written yet — then it stays, ready to Write there.
 function chordEdit() {
   const ck = S.ck, slot = `${S.cs.m}:${S.cs.beat}:${S.cs.k || 0}`, own = csChord(), text = own ? chordText(own) : '';
-  // selecting another chord starts again from it (changes not yet written are dropped, with a note)
-  if (slot !== ck.slot && ck.dirty && ck.slot) { ck.dirty = false; queueMicrotask(() => toast('Draft keys now start from the selected chord (the unwritten ones were dropped)')); }
+  // selecting another chord starts again from it (changes not yet written are dropped, with a note); in
+  // Draft, selecting an empty slot keeps the keys as they are, ready to Write there
+  if (slot !== ck.slot && ck.slot) {
+    if (own) { if (ck.dirty) { ck.dirty = false; queueMicrotask(() => toast('Draft keys now start from the selected chord (the unwritten ones were dropped)')); } }
+    else if (draftMode()) { ck.slot = slot; ck.text = text; return ck; }
+  }
   if (!ck.dirty && (slot !== ck.slot || text !== ck.text)) ck.notes = own ? chordKeys(own, S.bigBase) : [];
   ck.slot = slot; ck.text = text;
   return ck;
@@ -1953,9 +1957,17 @@ function restoreBackup(text) {
 function switchSong(id, opts = {}) {
   if (opts.saveCurrent !== false) syncCurrent();
   if (seq.playing || paused) stopPlay();
+  // the staged draft chord comes along to the other song (to Write there)
+  const staged = { notes: S.ck.notes.slice(), dirty: S.ck.dirty, set: S.draftSet };
   S.song = deserialiseSong(S.charts.find((c) => c.id === id) || S.charts[0]);
   if (S.song.chartOnly && S.layer === 'melody') { S.layer = 'chords'; buildPanel(); }
-  resetSelection(); render(); persist();
+  resetSelection();
+  if (staged.notes.length) {
+    const own = csChord();
+    Object.assign(S.ck, { notes: staged.notes, dirty: staged.dirty, slot: `${S.cs.m}:${S.cs.beat}:${S.cs.k || 0}`, text: own ? chordText(own) : '' });
+    S.draftSet = staged.set;
+  }
+  render(); persist();
 }
 
 // ---------------------------------------------------------------- misc
@@ -2106,7 +2118,7 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncRepoSongs(); });
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* not offered */ }
   if ('serviceWorker' in navigator && window.self === window.top && (location.protocol === 'https:' || location.hostname === 'localhost') && !location.hostname.endsWith('claude.ai')) { navigator.serviceWorker.register('sw.js').catch(() => {}); watchForUpdates(); }
-  window.__ls = { S, engine, seq, keyAction, enterPitch, render, renderAll, renderOverlay, playRange, timeline, libraryData, setLayer, tapScore, alignFold, syncRepoSongs, tidyLibrary };   // for testing
+  window.__ls = { S, engine, seq, keyAction, enterPitch, render, renderAll, renderOverlay, playRange, timeline, libraryData, setLayer, tapScore, alignFold, syncRepoSongs, tidyLibrary, switchSong };   // for testing
 }
 boot();
 
