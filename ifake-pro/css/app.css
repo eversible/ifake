@@ -490,7 +490,6 @@ body.split #mel-chip { height: 42px; }
 body.split #panel .key[data-action="pianoShift"] { display: none; }
 body.split #panel .krow.oct-row { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 /* Bars tab: its few rows needn't stretch; the piano takes the room */
-body.split[data-layer="bars"] #app { grid-template-rows: calc(var(--seg0) - env(safe-area-inset-top)) var(--hinge) 52px 38px minmax(0, auto) minmax(var(--piano-h), 1fr); }
 body.split[data-layer="bars"] #panel .krow { flex: 0 0 auto; }
 body.split[data-layer="bars"] #panel .key { min-height: 44px; max-height: 52px; }
 
@@ -517,8 +516,6 @@ body.split.head-up #app { padding-top: 0;
   grid-template-rows: env(safe-area-inset-top) calc(var(--seg0) - env(safe-area-inset-top)) var(--hinge) 52px 38px minmax(0, 1fr) var(--piano-h);
   grid-template-areas: "head head head head" "chart chart chart chart" "hinge hinge hinge hinge" "transport transport transport transport"
     "menu tabs even gear" "kb kb kb kb" "piano piano piano piano"; }
-body.split.head-up[data-layer="bars"] #app {
-  grid-template-rows: env(safe-area-inset-top) calc(var(--seg0) - env(safe-area-inset-top)) var(--hinge) 52px 38px minmax(0, auto) minmax(var(--piano-h), 1fr); }
 body.split.head-up #topbar { display: contents; }
 body.split.head-up #title { grid-area: head; align-self: end; display: block; max-width: calc(100% - 250px); box-sizing: border-box; padding: 0 12px 10px;
   color: #f2f2f7; font: 600 17px var(--ui-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
@@ -555,3 +552,5 @@ body.split.head-up #tabs { margin: 3px 4px 0; }
 #chordgrid .cell .beat { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; display: flex; align-items: center; justify-content: center; pointer-events: none; color: #1d1b16; }
 #chordgrid .cell .beat svg { height: 34%; max-height: 24px; width: auto; fill: currentColor; }
 #panel .key[data-action="beat"] svg { height: 20px; width: auto; vertical-align: middle; }
+/* the piano keeps one height in every tab; panels with fewer rows keep normal-sized keys at the top */
+body.split #panel .krow { max-height: 66px; }

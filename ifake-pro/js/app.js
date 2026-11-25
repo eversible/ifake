@@ -1049,7 +1049,7 @@ const PANELS = {
       ['↶', 'undo', 'Undo'], ['↷', 'redo', 'Redo'], ['⌨', 'type', 'Type notes'], ['♪', 'hearSel', 'Hear']],
   ],
   chords: [
-    'div',
+    // (no beat-split row: chords off the beat are typed as groups, e.g. [C7 F7] for the two halves of a beat)
     [...LETTERS.map((l) => [l, 'root', l, l]), ['♭', 'cacc', 'Flat', -1], ['♯', 'cacc', 'Sharp', 1], ['/', 'slash', 'Bass note']],
     [['–', 'q', 'Minor', 'min'], ['Δ', 'q', 'Major 7', 'maj'], ['+', 'q', 'Augmented', 'aug'], ['ø', 'q', 'Half-diminished', 'hdim'], ['o', 'q', 'Diminished', 'dim'],
       ['6', 'q', '6', 'six'], ['7', 'q', '7', 'dom7'], ['9', 'q', '9', 'dom9'], ['11', 'q', '11', 'dom11'], ['13', 'q', '13', 'dom13']],

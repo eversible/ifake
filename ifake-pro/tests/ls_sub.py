@@ -9,7 +9,8 @@ async def main():
         page.on("pageerror", lambda e: errs.append(str(e))); page.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
         await page.goto("http://127.0.0.1:8767/index.html?nosongs"); await page.wait_for_timeout(2000)
         J = page.evaluate
-        key = lambda a, arg=None: page.click(f'#panel .key[data-action="{a}"]' + (f'[data-arg="{arg}"]' if arg is not None else ''))
+        # beat splits have no keys any more (typed as [C F] groups); the action is still there underneath
+        key = lambda a, arg=None: (page.evaluate(f"__ls.keyAction('div', {arg!r})") if a == 'div' else page.click(f'#panel .key[data-action="{a}"]' + (f'[data-arg="{arg}"]' if arg is not None else '')))
         await J("__ls.setLayer('chords')")
         print("panel rows:", await J("[...document.querySelectorAll('#panel .krow')].map(r => r.children.length).join(',')"), "| panel h:", await J("Math.round(document.querySelector('#panel').getBoundingClientRect().height)"))
         # 1) bar 4 (F7), beat 4: split in two, put G♭7 on the "and"
@@ -31,7 +32,7 @@ async def main():
         for r in ['C', 'D', 'E']:
             await key('root', r); await key('cnext')
         print("3 quarter triplet bar 8:", await J("(async () => (await import('./js/song.js')).barChordText(__ls.S.song.measures[8]))()"), "| 't' on last beat dimmed:",
-              await J("(() => { __ls.S.cs = {m: 8, beat: 3, k: 0}; __ls.render(); return document.querySelector('#panel .key[data-arg=\"t\"]').classList.contains('dim'); })()"))
+              await J("(() => { __ls.S.cs = {m: 8, beat: 3, k: 0}; __ls.render(); const before = JSON.stringify(__ls.S.song.measures[8].div || {}); __ls.keyAction('div', 't'); return JSON.stringify(__ls.S.song.measures[8].div || {}) === before; })()"))
         # grid: cells, sub dividers, triplet brackets
         print("grid cells:", await J("document.querySelectorAll('#chordgrid .cell').length"), "| sub:", await J("document.querySelectorAll('#chordgrid .cell.sub').length"), "| triplet brackets:", await J("document.querySelectorAll('#chordgrid .tup3').length"))
         # tap the "and" of beat 4 in bar 4 on the grid (real touch)
