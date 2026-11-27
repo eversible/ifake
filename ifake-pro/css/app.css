@@ -575,7 +575,8 @@ body.split.narrow #bpm { min-width: 44px; }
 body.split.narrow #btn-play { width: 46px; }
 body.split.narrow #panel .key.small, body.split.narrow #panel .key.tiny { font-size: 11px; letter-spacing: -0.3px; padding: 0 1px; }
 body.split.narrow #bigpiano .bp-bar { gap: 4px; }
-/* the cover screen's status column: the score stays clear of it (the status icons sit beside the score), and
-   everything below the score — controls, keys and piano — runs the full width under it, like the system keyboard */
-body.split.narrow #app { padding-right: 0; }
-body.split.narrow #score-wrap { margin-right: env(safe-area-inset-right); }
+/* a status column at the side (the cover screen, or the open phone turned sideways): the score stays clear of it
+   (the status icons sit beside the score), and everything below the score — controls, keys and piano — runs the
+   full width under it, like the system keyboard */
+body.split #app { padding-left: 0; padding-right: 0; }
+body.split #score-wrap { margin-left: env(safe-area-inset-left); margin-right: env(safe-area-inset-right); }
