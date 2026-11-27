@@ -554,3 +554,24 @@ body.split.head-up #tabs { margin: 3px 4px 0; }
 #panel .key[data-action="beat"] svg { height: 20px; width: auto; vertical-align: middle; }
 /* the piano keeps one height in every tab; panels with fewer rows keep normal-sized keys at the top */
 body.split #panel .krow { max-height: 66px; }
+/* narrow split screen (the folded phone's cover screen): ☰, Even and ⚙ sit beside the tabs, as on the tall-band
+   layout, and the control row tightens so everything fits beside the status column */
+body.split.narrow:not(.head-up) #app {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: calc(var(--seg0) - env(safe-area-inset-top)) var(--hinge) 50px 38px minmax(0, 1fr) var(--piano-h);
+  grid-template-areas: "chart chart chart chart" "hinge hinge hinge hinge" "transport transport transport transport"
+    "menu tabs even gear" "kb kb kb kb" "piano piano piano piano"; }
+body.split.narrow #topbar { display: contents; }
+body.split.narrow #btn-charts { grid-area: menu; margin: 3px 0 0 4px; }
+body.split.narrow #btn-even { grid-area: even; margin: 3px 0 0 0; }
+body.split.narrow #btn-settings { grid-area: gear; margin: 3px 4px 0 4px; }
+body.split.narrow #topbar .tb { height: 34px; min-height: 0; min-width: 36px; }
+body.split.narrow #transport { gap: 4px; padding: 4px 4px; }
+body.split.narrow #loop-chip { min-width: 44px; padding: 0 6px; gap: 5px; }
+body.split.narrow #mel-chip, body.split.narrow #swing-chip { min-width: 0; padding: 0 5px; }
+body.split.narrow #mel-chip .mc-main, body.split.narrow #swing-chip .sw-main { font-size: 13px; }
+body.split.narrow #tempo-down, body.split.narrow #tempo-up { min-width: 30px; font-size: 18px; }
+body.split.narrow #bpm { min-width: 44px; }
+body.split.narrow #btn-play { width: 46px; }
+body.split.narrow #panel .key.small, body.split.narrow #panel .key.tiny { font-size: 11px; letter-spacing: -0.3px; padding: 0 1px; }
+body.split.narrow #bigpiano .bp-bar { gap: 4px; }

@@ -520,6 +520,10 @@ function applySplit() {
   document.body.classList.toggle('split', on);
   // a tall status-bar band (the Duo's): the song title, ☰, Even and ⚙ move up into it, left of the status circle
   document.body.classList.toggle('head-up', on && safeTop() >= 40);
+  // a narrow screen (the folded phone's cover screen: ~380 pt across beside its status column): ☰, Even and ⚙
+  // move beside the tabs and the control row tightens up
+  const usableW = window.innerWidth - cssHeight('env(safe-area-inset-left)') - cssHeight('env(safe-area-inset-right)');
+  document.body.classList.toggle('narrow', on && usableW < 440);
   $('#bigpiano').hidden = !on;
   if (on && (!was || S.bigOct !== bigOctaves())) buildBigPiano();
   return on !== was;
