@@ -113,3 +113,5 @@ while Mez was away. Each of those rows lists the alternatives so it can be revis
 | Redo in the Chords keys | ↷ Redo sits beside ↶ Undo on the Chords tab's last key row (the other tabs had it already) |
 | No "keys dropped" toast | Selecting a chord over unwritten Draft keys loads the chord quietly (the "unwritten ones were dropped" popup went) |
 | Follow without latch | F now shows in Draft with latch off too: it marks the selected chord (or note) on the keys in pale blue, root dotted, without holding them, and the bar names it until you play keys. Tapping the name plays it |
+| What you hear is what's lit | With the piano keys on screen, a selected chord now plays exactly the keys it lights (plus its bass note below), the same as tapping its name or the keys; edited keys play as they are. The voice-led voicing is kept for playback (and for phones without the big keyboard), where it used to make selecting and the name tap sound in different octaves |
+| Marked keys sat low | The Follow marks used the class "hint", which the grey hint-text style also uses (a 6px margin): the marked keys were pushed down and cut off at the bottom. Renamed |

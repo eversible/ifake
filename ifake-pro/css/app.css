@@ -385,10 +385,10 @@ body.split #bigpiano { grid-area: piano; display: flex; }
 #bigpiano .pk.on.root::after { content: ''; position: absolute; left: 50%; bottom: 26px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #fff; }
 #bigpiano .pk.on.root.b::after { bottom: 10px; }
 /* Follow without latch: the selected chord's keys are marked (pale blue, root dotted) but not held */
-#bigpiano .pk.hint.w:not(.on) { background: #c9dcff; color: #3d6fc4; }
-#bigpiano .pk.hint.b:not(.on) { background: #34558f; }
-#bigpiano .pk.hint.root:not(.on)::after { content: ''; position: absolute; left: 50%; bottom: 26px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #0a5fd6; }
-#bigpiano .pk.hint.root.b:not(.on)::after { bottom: 10px; background: #fff; }
+#bigpiano .pk.fmark.w:not(.on) { background: #c9dcff; color: #3d6fc4; }
+#bigpiano .pk.fmark.b:not(.on) { background: #34558f; }
+#bigpiano .pk.fmark.root:not(.on)::after { content: ''; position: absolute; left: 50%; bottom: 26px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #0a5fd6; }
+#bigpiano .pk.fmark.root.b:not(.on)::after { bottom: 10px; background: #fff; }
 #bigpiano .pk.play.w { background: #34c759; color: #fff; }
 #bigpiano .pk.play.b { background: #1f8f3f; }
 #bigpiano .pk.down { filter: brightness(0.85); }

@@ -346,6 +346,9 @@ function hearChordAt(m, pos, force = false) {
   if (!force && !S.settings.audition) return;
   const seg = segAt(m, pos);
   if (!seg || !seg.v) return;
+  // with the piano keys on screen a chord sounds exactly as its keys light (plus its bass note), however it's
+  // played: selecting it, tapping its name, or the keys themselves. The voice-led voicing is for playback
+  if (bigPianoShown() && seg.chord) { strikeChord(chordSoundKeys(seg, m), true, seg.chord); return; }
   const go = () => {
     const ctx = engine.ensureContext(), t = ctx.currentTime + 0.005, s = S.settings;
     cutChordSound(t);
@@ -652,7 +655,7 @@ function updateBigPiano() {
   el.querySelectorAll('.pk').forEach((k) => {
     const m = +k.dataset.midi;
     k.classList.toggle('on', on.has(m)); k.classList.toggle('play', play.has(m)); k.classList.toggle('mel', mel.has(m));
-    k.classList.toggle('hint', hint.has(m));
+    k.classList.toggle('fmark', hint.has(m));   // not 'hint': that's the grey hint-text style
   });
   // something sounding beyond the keys: light the octave arrow on that side (orange melody, green chord)
   if (!pianoDrag) positionStrip();
@@ -737,6 +740,15 @@ function showPlaying(el, seg) {
   name.textContent = c ? chordText(c) : paused ? 'Paused' : 'Playing';
   for (const b of el.querySelectorAll('[data-bp="write"], [data-bp="clear"]')) { b.disabled = true; b.classList.remove('ready'); }
 }
+const bigPianoShown = () => { const bp = $('#bigpiano'); return !!bp && !bp.hidden && !!bp.firstChild && document.body.classList.contains('split'); };
+// the keys a chord lights: the loaded keys when they are this selected chord, untouched; else the chord at the keyboard
+function chordSoundKeys(seg, m) {
+  if (S.layer === 'chords' && S.cs && S.cs.m === m && (!draftMode() || followSel())) {
+    const ck = chordEdit(), own = csChord();
+    if (own && !own.nc && !own.rep && chordText(own) === chordText(seg.chord) && !ck.dirty && ck.text === chordText(own) && ck.notes.length) return ck.notes;
+  }
+  return chordKeys(seg.chord, S.bigBase);
+}
 // the piano bar's one-letter buttons: hold one to see what it does
 let tipHold = null, tipTimer = 0;
 function showTip(b) {
@@ -754,7 +766,7 @@ function cutChordSound(t) {
   S.strikes = []; S.auditionVoices = [];
 }
 // play the latched keys together, cutting the previous strike
-function strikeChord(notes, asChord = false) {
+function strikeChord(notes, asChord = false, chord = null) {
   const mel = S.layer === 'melody' && !asChord, s = S.settings;
   const go = () => {
     const ctx = engine.ensureContext(), t = ctx.currentTime + 0.005;
@@ -764,7 +776,7 @@ function strikeChord(notes, asChord = false) {
     // the name the keys get; unnamed keys use their lowest note) down in the bass, on the bass instrument,
     // and always below the keys so it is heard as the bass
     if (!mel && notes.length > 1) {
-      const c = nameChord(notes, S.song.key.fifths);
+      const c = chord || nameChord(notes, S.song.key.fifths);
       const pc = c && !c.nc && c.root ? notePC(c.bass || c.root) : mod(Math.min(...notes), 12);
       let low = 36 + pc;
       while (low >= Math.min(...notes) && low >= 36) low -= 12;
