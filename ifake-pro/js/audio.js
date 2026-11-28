@@ -101,6 +101,8 @@ export class AudioEngine {
     const AC = window.AudioContext || window.webkitAudioContext;
     this.ctx = new AC({ latencyHint: 'interactive' });
     const ctx = this.ctx;
+    // a phone call or another app can interrupt the audio without the app being hidden: treat it like leaving
+    ctx.onstatechange = () => { if (ctx.state === 'interrupted' && this.ctx === ctx) this._awayAt = performance.now(); };
     this.comp = ctx.createDynamicsCompressor();
     this.comp.threshold.value = -10; this.comp.ratio.value = 4;
     this.comp.connect(ctx.destination);
@@ -118,19 +120,22 @@ export class AudioEngine {
     return ctx;
   }
 
-  // The app went to the background. iOS can leave an audio context stuck after that (silent, or never
-  // resuming), so the first tap after coming back starts a fresh one; the loaded samples carry over.
+  // The app went to the background. iOS can leave an audio context stuck after that (silent, never resuming,
+  // or running far behind — the sound comes late), so coming back starts a fresh one (on the way back, and
+  // at the latest on the first tap); the loaded samples carry over.
   away() { if (this.ctx) this._awayAt = performance.now(); }
+  back() { if (this.ctx && this._awayAt) { this._awayAt = 0; this._renew(); } }
   _renew() {
     const old = this.ctx;
+    if (this.onRenew) this.onRenew();                // the app stops playback first (its timing is on the old clock)
     this.ctx = null; this._unlocked = false;
-    try { old.close(); } catch (e) { /* already closed */ }
+    try { const p = old.close(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* already closed */ }
     this.ensureContext();
   }
 
   // Must be called from a user gesture on iOS.
   unlock() {
-    if (this.ctx && this._awayAt && (performance.now() - this._awayAt > 1000 || this.ctx.state !== 'running')) this._renew();
+    if (this.ctx && (this._awayAt || this.ctx.state === 'closed')) this._renew();
     this._awayAt = 0;
     const ctx = this.ensureContext();
     try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* older Safari */ }

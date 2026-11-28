@@ -571,13 +571,13 @@ function buildBigPiano() {
   stripAt = null;
   el.innerHTML = `<div class="bp-bar">
     <div class="bp-mode" role="group" aria-label="Piano mode"><button data-bp="edit">Edit</button><button data-bp="draft">Draft</button></div>
+    <button data-bp="follow" class="bp-follow">Follow</button>
     <button data-bp="down" class="bp-oct" aria-label="Octave down">‹</button><div class="bp-name" data-bp="name" role="button" aria-label="Play these keys again"></div><button data-bp="up" class="bp-oct" aria-label="Octave up">›</button>
     <button data-bp="strike" aria-label="Play the chord">▶</button>
     <button data-bp="write" class="bp-write" aria-label="Write the chord into the selected slot">Write</button>
     <button data-bp="more" class="bp-more" aria-label="More piano options">⋯</button></div>
     <div class="bp-menu" hidden>
       <button data-bp="clear">Clear the keys</button>
-      <button data-bp="follow" class="bp-sw"><span>Start from the selection</span><i></i></button>
       <button data-bp="latch" class="bp-sw"><span>Keys stay down (latch)</span><i></i></button>
     </div>
     <div class="bp-keys"><div class="bp-strip">${keys}</div></div>`;
@@ -665,7 +665,7 @@ function updateBigPiano() {
   const followBtn = el.querySelector('[data-bp="follow"]');
   followBtn.hidden = !(draft && latchOn() && (S.layer === 'chords' || S.layer === 'melody'));
   followBtn.classList.toggle('on', followSel());
-  followBtn.querySelector('span').textContent = S.layer === 'chords' ? 'Start from the selected chord' : 'Start from the selected note';
+  followBtn.title = followBtn.ariaLabel = `Follow: the draft keys start from the selected ${S.layer === 'chords' ? 'chord' : 'note'}`;
   queueMicrotask(() => { el.querySelector('[data-bp="more"]').hidden = ![...el.querySelectorAll('.bp-menu button')].some((b) => !b.hidden); });
   if (draft) {
     // draft: just playing — keys latch (tap on/off) or sound while held, and the chord is named. Nothing
@@ -770,7 +770,7 @@ function draftUp(id) {
 function bigPianoBar(what) {
   const menu = $('#bigpiano .bp-menu');
   if (what === 'more') { menu.hidden = !menu.hidden; return; }
-  const inMenu = what === 'clear' || what === 'follow' || what === 'latch';
+  const inMenu = what === 'clear' || what === 'latch';
   if (menu && what === 'clear') afterTap(() => { menu.hidden = true; });
   else if (menu && !inMenu) menu.hidden = true;
   if (what === 'edit' || what === 'draft') {
@@ -2107,8 +2107,12 @@ function bindGlobal() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
   // leaving the app: pause, and let the sound start afresh on the first tap back (iOS can leave it stuck)
   const away = () => { if (seq.playing) pausePlay(); engine.away(); };
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') away(); });
+  engine.onRenew = () => { if (seq.playing) pausePlay(); };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') away(); else engine.back(); });
   window.addEventListener('pagehide', away);
+  window.addEventListener('pageshow', () => engine.back());
+  // any tap wakes the sound (and starts it afresh after the app has been away), whatever was tapped
+  document.addEventListener('pointerdown', () => engine.unlock(), true);
 }
 function renderAll() { applySplit(); buildPanel(); render(); updateSyncLabel(); }
 

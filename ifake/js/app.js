@@ -1478,8 +1478,12 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
   // leaving the app: stop playing, and let the sound start afresh on the first tap back (iOS can leave it stuck)
   const away = () => { if (seq.playing) { startToken = 0; seq.stop(); clearPlayhead(); renderLoop(); } engine.away(); };
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') away(); });
+  engine.onRenew = () => { if (seq.playing) { startToken = 0; seq.stop(); clearPlayhead(); renderLoop(); } };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') away(); else engine.back(); });
   window.addEventListener('pagehide', away);
+  window.addEventListener('pageshow', () => engine.back());
+  // any tap wakes the sound (and starts it afresh after the app has been away), whatever was tapped
+  document.addEventListener('pointerdown', () => engine.unlock(), true);
   // audio: create the context early so samples decode before the first tap
   try { engine.ensureContext(); } catch (e) { /* no Web Audio */ }
   applyAudioSettings();

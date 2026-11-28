@@ -580,3 +580,11 @@ body.split.narrow #bigpiano .bp-bar { gap: 4px; }
    full width under it, like the system keyboard */
 body.split #app { padding-left: 0; padding-right: 0; }
 body.split #score-wrap { margin-left: env(safe-area-inset-left); margin-right: env(safe-area-inset-right); }
+/* Follow (the draft keys start from the selected chord / note), beside Edit | Draft */
+#bigpiano .bp-bar button.bp-follow { font-size: 15px; padding: 0 9px; }
+#bigpiano .bp-bar button.bp-follow.on { background: #0a84ff; color: #fff; }
+/* narrow screens: a tighter piano bar so the chord name keeps room */
+body.split.narrow #bigpiano .bp-bar button { min-width: 34px; padding: 0 6px; font-size: 15px; }
+body.split.narrow #bigpiano .bp-mode button { padding: 0 8px; }
+body.split.narrow #bigpiano .bp-bar button.bp-follow { padding: 0 6px; font-size: 14px; }
+body.split.narrow #bigpiano .bp-bar button.bp-write { padding: 0 7px; }

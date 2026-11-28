@@ -1,8 +1,8 @@
 // Offline cache for the GitHub Pages build (not used inside claude.ai).
 // tools/stamp.py fills in BUILD, CORE, SAMPLES_BUILD and SAMPLE_DEFAULTS; run it before every push.
 const APP = 'chordpad';
-const BUILD = '3293b8dc6c';
-const CORE = [ "./", "index.html", "css/app.css?v=079ba879d8", "js/app.js?v=a96463df92", "js/audio.js?v=2b981af6cc", "js/chords.js?v=5fb7131653", "js/form.js?v=8150dd6c2c", "js/store.js?v=4769d0f668", "js/voicing.js?v=e6563af0b1", "manifest.webmanifest", "samples/index.json", "icons/icon-180.png", "icons/icon-192.png" ];
+const BUILD = 'c5e309c834';
+const CORE = [ "./", "index.html", "css/app.css?v=079ba879d8", "js/app.js?v=8fc3eb80aa", "js/audio.js?v=5057f08e7a", "js/chords.js?v=5fb7131653", "js/form.js?v=8150dd6c2c", "js/store.js?v=4769d0f668", "js/voicing.js?v=e6563af0b1", "manifest.webmanifest", "samples/index.json", "icons/icon-180.png", "icons/icon-192.png" ];
 const SAMPLES_BUILD = '3f30b2ae47';
 const SAMPLE_DEFAULTS = ["samples/piano.json", "samples/upbass.json"];
 const CODE = APP + '-code-' + BUILD, SAMPLES = APP + '-samples-' + SAMPLES_BUILD;
