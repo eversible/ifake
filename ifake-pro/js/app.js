@@ -693,8 +693,9 @@ function updateBigPiano() {
     const ck = chordEdit(), c = ck.notes.length > 1 ? nameChord(ck.notes, S.song.key.fifths) : null, own = csChord();
     const same = c && own && chordText(c) === chordText(own);
     name.className = 'bp-name' + (c ? '' : ' none');
-    name.textContent = c ? chordText(c) : ck.notes.length ? 'No chord name for these notes' : 'Tap keys to build a chord (lowest = root)';
-    write.disabled = !c || same;
+    name.textContent = c ? chordText(c) : ck.notes.length ? 'No chord name yet (not written)' : 'Tap keys to build a chord (lowest = root)';
+    // Edit writes as you go, so its Write button isn't needed
+    write.hidden = true; write.disabled = !c || same;
     write.classList.toggle('ready', !!c && !same);
     markRoot(el, on, playback ? null : c);
   } else { name.className = 'bp-name none'; name.textContent = S.layer === 'melody' ? 'Tap a key to enter a note' : ''; markRoot(el, on, null); }
@@ -744,11 +745,17 @@ function bigPianoKey(midi) {
   }
   if (S.layer === 'melody') { enterPitch(midi); return; }
   if (S.layer !== 'chords') { hearKey(midi); return; }
-  // toggle the key; play what is now down (the whole chord, or what's left after a key comes up)
+  // Edit: toggle the key and write the chord straight into the selected slot (no Write needed). Keys that
+  // make no chord name wait (shown as such) until they do; taking every key off empties the slot.
   const ck = chordEdit(), set = new Set(ck.notes);
   if (set.has(midi)) set.delete(midi); else set.add(midi);
-  ck.notes = [...set].sort((a, b) => a - b); ck.dirty = true;
+  ck.notes = [...set].sort((a, b) => a - b);
   strikeChord(ck.notes);
+  const c = ck.notes.length > 1 ? nameChord(ck.notes, S.song.key.fifths) : null, own = csChord();
+  if (c || !ck.notes.length) {
+    if (!(c && own && chordText(c) === chordText(own)) && (c || own)) edit(() => { setSlot(csMeas(), S.cs.beat, S.cs.k || 0, c || null); });
+    ck.dirty = false; ck.text = c ? chordText(c) : '';
+  } else ck.dirty = true;
   updateBigPiano();
 }
 // draft mode: keys sound while held (several at once), and a finger sliding across the keys glides
