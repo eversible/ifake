@@ -720,6 +720,14 @@ function strikeChord(notes, asChord = false) {
   for (const h of S.strikes) if (h) h.release(t);
   const mel = S.layer === 'melody' && !asChord;
   S.strikes = notes.map((m) => engine.note(mel ? S.settings.melodyInst : S.settings.chordInst, m, t, 2.5, 0.72, mel ? 'melody' : 'chord'));
+  // a chord sounds the way it does when you select one: with its bass note (the slash bass, else the root, from
+  // the name the keys get; unnamed keys use their lowest note) down in the bass, on the bass instrument
+  if (!mel && notes.length > 1) {
+    const c = nameChord(notes, S.song.key.fifths);
+    const pc = c && !c.nc && c.root ? notePC(c.bass || c.root) : mod(Math.min(...notes), 12);
+    const s = S.settings, low = 36 + pc;
+    S.strikes.push(s.bassPattern !== 'off' ? engine.note(s.bassInst, low, t, 2.5, 0.85, 'bass') : engine.note(s.chordInst, low, t, 2.5, 0.7, 'chord'));
+  }
 }
 function hearKey(midi) {
   const ctx = engine.ensureContext(), t = ctx.currentTime + 0.005;
