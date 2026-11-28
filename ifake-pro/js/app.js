@@ -753,8 +753,10 @@ function bigPianoKey(midi) {
   strikeChord(ck.notes);
   const c = ck.notes.length > 1 ? nameChord(ck.notes, S.song.key.fifths) : null, own = csChord();
   if (c || !ck.notes.length) {
-    if (!(c && own && chordText(c) === chordText(own)) && (c || own)) edit(() => { setSlot(csMeas(), S.cs.beat, S.cs.k || 0, c || null); });
+    // note what's being written first, so redrawing after the edit keeps these keys (not the symbol's own
+    // voicing, which would bring back a note the name leaves out, like the 5th)
     ck.dirty = false; ck.text = c ? chordText(c) : '';
+    if (!(c && own && chordText(c) === chordText(own)) && (c || own)) edit(() => { setSlot(csMeas(), S.cs.beat, S.cs.k || 0, c || null); });
   } else ck.dirty = true;
   updateBigPiano();
 }
@@ -789,8 +791,8 @@ function bigPianoBar(what) {
   if (what === 'write' && draftMode()) {               // draft: put the drafted chord in the selected slot
     if (!S.draftChord || S.layer !== 'chords') return;
     const c = cloneChord(S.draftChord);
+    if (latchOn()) { const ck = chordEdit(); ck.dirty = false; ck.text = chordText(c); }   // first, so the keys stay as they are
     edit(() => { setSlot(csMeas(), S.cs.beat, S.cs.k || 0, c); });
-    if (latchOn()) { const ck = chordEdit(); ck.dirty = false; ck.text = chordText(c); }
     toast(`${chordText(c)} → ${barLabel(S.cs.m)}, ${posLabel(csPos())}`);
     updateBigPiano(); return;
   }
