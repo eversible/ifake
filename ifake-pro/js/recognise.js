@@ -177,10 +177,25 @@ const accText = (a) => (a > 0 ? '♯'.repeat(a) : '♭'.repeat(-a));
 
 // the keys that show a chord: its lowest note (the root, or the bass of a slash chord) in the piano's lowest
 // octave, the other notes close above it
+// the chord on the keys, stacked in its own order from the root: 1 3 5 7, then 9 11 13 above the 7th (so a ♭9
+// sits above the 7th, not a semitone over the root). The root is the first one at or above base; a slash bass
+// that isn't the root goes underneath, and isn't doubled above
 export function chordKeys(c, base) {
   if (!c || c.nc || !c.root) return [];
-  const rootPC = notePC(c.root), low = c.bass ? notePC(c.bass) : rootPC, start = base + mod12(low - base);
-  const pcs = new Set(chordIntervals(c).map((i) => mod12(rootPC + ivlSemis(i))));
-  pcs.add(low);
-  return [...pcs].map((p) => start + mod12(p - low)).sort((a, b) => a - b);
+  const rootPC = notePC(c.root), bassPC = c.bass ? notePC(c.bass) : rootPC;
+  const out = [];
+  let rootM;
+  if (bassPC !== rootPC) {
+    const b = base + mod12(bassPC - base);
+    out.push(b);
+    rootM = b + mod12(rootPC - bassPC);
+  } else rootM = base + mod12(rootPC - base);
+  let prev = out.length ? out[0] : -Infinity;
+  for (const i of chordIntervals(c)) {          // in degree order
+    let m = rootM + ivlSemis(i);
+    if (out.length && bassPC !== rootPC && mod12(m - bassPC) === 0) continue;
+    while (m <= prev) m += 12;
+    out.push(m); prev = m;
+  }
+  return out;
 }
