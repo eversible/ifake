@@ -23,6 +23,11 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const uid = () => Math.random().toString(36).slice(2, 10);
 const mod = (a, n) => ((a % n) + n) % n;
+const SOUND_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="w" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="x" d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+// the sound button: a speaker; struck through (orange) when the sound isn't running. Tapping it starts the
+// sound afresh (for when iOS has left it silent or late after the app was away)
+function updateSoundBtn() { const b = document.getElementById('btn-sound'); if (b) b.classList.toggle('off', !engine.ok); }
+
 
 const DEFAULT_SETTINGS = {
   loop: true, melodyInst: 'altosax', chordInst: 'piano', bassInst: 'upbass', compPattern: 'block', bassPattern: 'off',
@@ -343,7 +348,7 @@ function hearChordAt(m, pos, force = false) {
   if (!seg || !seg.v) return;
   const go = () => {
     const ctx = engine.ensureContext(), t = ctx.currentTime + 0.005, s = S.settings;
-    S.auditionVoices.forEach((h) => h && h.release(t));
+    cutChordSound(t);
     const v = seg.v.upper.map((x) => engine.note(s.chordInst, x, t, 1.6, 0.8, 'chord'));
     v.push(s.bassPattern !== 'off' ? engine.note(s.bassInst, seg.v.bass, t, 1.6, 0.85, 'bass') : engine.note(s.chordInst, seg.v.bass, t, 1.6, 0.7, 'chord'));
     S.auditionVoices = v;
@@ -571,15 +576,11 @@ function buildBigPiano() {
   stripAt = null;
   el.innerHTML = `<div class="bp-bar">
     <div class="bp-mode" role="group" aria-label="Piano mode"><button data-bp="edit">Edit</button><button data-bp="draft">Draft</button></div>
-    <button data-bp="follow" class="bp-follow">Follow</button>
+    <button data-bp="latch" class="bp-tog" data-tip="Latch: keys stay down until tapped again">L</button>
+    <button data-bp="follow" class="bp-tog">F</button>
     <button data-bp="down" class="bp-oct" aria-label="Octave down">‹</button><div class="bp-name" data-bp="name" role="button" aria-label="Play these keys again"></div><button data-bp="up" class="bp-oct" aria-label="Octave up">›</button>
-    <button data-bp="strike" aria-label="Play the chord">▶</button>
     <button data-bp="write" class="bp-write" aria-label="Write the chord into the selected slot">Write</button>
-    <button data-bp="more" class="bp-more" aria-label="More piano options">⋯</button></div>
-    <div class="bp-menu" hidden>
-      <button data-bp="clear">Clear the keys</button>
-      <button data-bp="latch" class="bp-sw"><span>Keys stay down (latch)</span><i></i></button>
-    </div>
+    <button data-bp="clear" class="bp-tog" data-tip="Clear: lift all the keys">C</button></div>
     <div class="bp-keys"><div class="bp-strip">${keys}</div></div>`;
   positionStrip(false);
   updateBigPiano();
@@ -662,44 +663,53 @@ function updateBigPiano() {
   const name = el.querySelector('.bp-name');
   const latchBtn = el.querySelector('[data-bp="latch"]');
   latchBtn.hidden = !draft; latchBtn.classList.toggle('on', latchOn());
+  latchBtn.title = latchBtn.ariaLabel = latchBtn.dataset.tip;
   const followBtn = el.querySelector('[data-bp="follow"]');
   followBtn.hidden = !(draft && latchOn() && (S.layer === 'chords' || S.layer === 'melody'));
   followBtn.classList.toggle('on', followSel());
-  followBtn.title = followBtn.ariaLabel = `Follow: the draft keys start from the selected ${S.layer === 'chords' ? 'chord' : 'note'}`;
-  queueMicrotask(() => { el.querySelector('[data-bp="more"]').hidden = ![...el.querySelectorAll('.bp-menu button')].some((b) => !b.hidden); });
+  followBtn.title = followBtn.ariaLabel = followBtn.dataset.tip = `Follow: the keys start from the selected ${S.layer === 'chords' ? 'chord' : 'note'}`;
+  const clearBtn = el.querySelector('[data-bp="clear"]'); clearBtn.title = clearBtn.ariaLabel = clearBtn.dataset.tip;
   if (draft) {
     // draft: just playing — keys latch (tap on/off) or sound while held, and the chord is named. Nothing
     // goes into the song unless you tap Write (Chords tab): then it goes into the selected slot
     const latch = latchOn(), down = latch ? latchSet().notes : heldNotes();
     const built = S.draftSet && S.draftSet.key === down.join() ? S.draftSet.chord : null;
-    const c = built || (down.length > 1 ? nameChord(down, S.song.key.fifths) : null), own = csChord();
+    const c = built || (latch && ownName(down)) || (down.length > 1 ? nameChord(down, S.song.key.fifths) : null), own = csChord();
     S.draftChord = c;
     const txt = c ? chordText(c) : '';
     if (txt !== S.draftText) { S.draftText = txt; if (S.layer === 'chords') queueMicrotask(updatePanel); }
     name.className = 'bp-name' + (c ? '' : ' none');
-    name.textContent = c ? chordText(c) : down.length ? (latch ? 'No chord name for these notes' : '') : latch ? 'Draft: tap keys on/off' : 'Draft: play freely';
+    name.textContent = c ? chordText(c) : '';                 // just the name: no hint lines
     const write = el.querySelector('[data-bp="write"]'), same = c && own && chordText(c) === chordText(own);
     write.hidden = S.layer !== 'chords';
     write.disabled = !c || same;
     write.classList.toggle('ready', !!c && !same);
-    for (const b of el.querySelectorAll('[data-bp="strike"], [data-bp="clear"]')) b.hidden = !latch;
+    el.querySelector('[data-bp="clear"]').hidden = !latch;
     markRoot(el, on, playback || S.layer !== 'chords' ? null : c);
     if (playback) showPlaying(el, playSeg);
     return;
   }
   const chords = S.layer === 'chords', write = el.querySelector('[data-bp="write"]');
-  for (const b of el.querySelectorAll('[data-bp="strike"], [data-bp="clear"], [data-bp="write"]')) b.hidden = !chords;
+  for (const b of el.querySelectorAll('[data-bp="clear"], [data-bp="write"]')) b.hidden = !chords;
   if (chords) {
-    const ck = chordEdit(), c = ck.notes.length > 1 ? nameChord(ck.notes, S.song.key.fifths) : null, own = csChord();
+    const ck = chordEdit(), own = csChord();
+    const c = (own && !own.nc && !own.rep && !ck.dirty && ck.text === chordText(own) ? own : null) || (ck.notes.length > 1 ? nameChord(ck.notes, S.song.key.fifths) : null);
     const same = c && own && chordText(c) === chordText(own);
     name.className = 'bp-name' + (c ? '' : ' none');
-    name.textContent = c ? chordText(c) : ck.notes.length ? 'No chord name yet (not written)' : 'Tap keys to build a chord (lowest = root)';
+    name.textContent = c ? chordText(c) : '';
     // Edit writes as you go, so its Write button isn't needed
     write.hidden = true; write.disabled = !c || same;
     write.classList.toggle('ready', !!c && !same);
     markRoot(el, on, playback ? null : c);
-  } else { name.className = 'bp-name none'; name.textContent = S.layer === 'melody' ? 'Tap a key to enter a note' : ''; markRoot(el, on, null); }
+  } else { name.className = 'bp-name none'; name.textContent = ''; markRoot(el, on, null); }
   if (playback) showPlaying(el, playSeg);
+}
+// keys straight from the selected chord (not changed since) are named as that chord, not re-read from scratch:
+// the same notes can have several names (G-7(♯5) and E♭(add9)/G), and the chart's own one should show
+function ownName(keys) {
+  if (S.layer !== 'chords' || !followSel()) return null;
+  const ck = S.ck, own = csChord();
+  return own && !own.nc && !own.rep && !ck.dirty && ck.text === chordText(own) && ck.notes.join() === keys.join() ? own : null;
 }
 // the chord's root on the keys (its lowest key) is a darker blue with a dot
 function markRoot(el, on, c) {
@@ -707,28 +717,56 @@ function markRoot(el, on, c) {
   const key = pc == null ? null : [...on].sort((a, b) => a - b).find((m) => mod(m - pc, 12) === 0);
   el.querySelectorAll('.pk').forEach((k) => k.classList.toggle('root', +k.dataset.midi === key));
 }
-// playing or paused: the bar names the chord playing, ▶ plays it, and Write / Clear wait until it stops
+// playing or paused: the bar names the chord playing (tap it to hear it), and Write / Clear wait until it stops
 function showPlaying(el, seg) {
   const name = el.querySelector('.bp-name'), c = seg && seg.chord;
   name.className = 'bp-name playing' + (c ? '' : ' none');
   name.textContent = c ? chordText(c) : paused ? 'Paused' : 'Playing';
-  el.querySelector('[data-bp="strike"]').hidden = !c;
   for (const b of el.querySelectorAll('[data-bp="write"], [data-bp="clear"]')) { b.disabled = true; b.classList.remove('ready'); }
+}
+// the piano bar's one-letter buttons: hold one to see what it does
+let tipHold = null, tipTimer = 0;
+function showTip(b) {
+  const bp = $('#bigpiano'); let tip = bp.querySelector('.bp-tip');
+  if (!tip) { tip = document.createElement('div'); tip.className = 'bp-tip'; bp.appendChild(tip); }
+  clearTimeout(tipTimer); tip.textContent = b.dataset.tip; tip.hidden = false;
+  const box = bp.getBoundingClientRect(), r = b.getBoundingClientRect(), w = tip.offsetWidth;
+  tip.style.left = `${Math.max(4, Math.min(box.width - w - 4, r.left - box.left + r.width / 2 - w / 2))}px`;
+}
+function hideTipSoon() { clearTimeout(tipTimer); tipTimer = setTimeout(() => { const t = $('#bigpiano .bp-tip'); if (t) t.hidden = true; }, 1500); }
+// a new chord sound cuts the last one, whichever way it was played
+function cutChordSound(t) {
+  for (const h of S.strikes) if (h) h.release(t);
+  for (const h of S.auditionVoices) if (h) h.release(t);
+  S.strikes = []; S.auditionVoices = [];
 }
 // play the latched keys together, cutting the previous strike
 function strikeChord(notes, asChord = false) {
-  const ctx = engine.ensureContext(), t = ctx.currentTime + 0.005;
-  for (const h of S.strikes) if (h) h.release(t);
-  const mel = S.layer === 'melody' && !asChord;
-  S.strikes = notes.map((m) => engine.note(mel ? S.settings.melodyInst : S.settings.chordInst, m, t, 2.5, 0.72, mel ? 'melody' : 'chord'));
-  // a chord sounds the way it does when you select one: with its bass note (the slash bass, else the root, from
-  // the name the keys get; unnamed keys use their lowest note) down in the bass, on the bass instrument
-  if (!mel && notes.length > 1) {
-    const c = nameChord(notes, S.song.key.fifths);
-    const pc = c && !c.nc && c.root ? notePC(c.bass || c.root) : mod(Math.min(...notes), 12);
-    const s = S.settings, low = 36 + pc;
-    S.strikes.push(s.bassPattern !== 'off' ? engine.note(s.bassInst, low, t, 2.5, 0.85, 'bass') : engine.note(s.chordInst, low, t, 2.5, 0.7, 'chord'));
-  }
+  const mel = S.layer === 'melody' && !asChord, s = S.settings;
+  const go = () => {
+    const ctx = engine.ensureContext(), t = ctx.currentTime + 0.005;
+    cutChordSound(t);
+    S.strikes = notes.map((m) => engine.note(mel ? s.melodyInst : s.chordInst, m, t, 2.5, mel ? 0.72 : 0.8, mel ? 'melody' : 'chord'));
+    // a chord sounds the way it does when you select one: with its bass note (the slash bass, else the root, from
+    // the name the keys get; unnamed keys use their lowest note) down in the bass, on the bass instrument,
+    // and always below the keys so it is heard as the bass
+    if (!mel && notes.length > 1) {
+      const c = nameChord(notes, S.song.key.fifths);
+      const pc = c && !c.nc && c.root ? notePC(c.bass || c.root) : mod(Math.min(...notes), 12);
+      let low = 36 + pc;
+      while (low >= Math.min(...notes) && low >= 36) low -= 12;
+      S.strikes.push(s.bassPattern !== 'off' ? engine.note(s.bassInst, low, t, 2.5, 0.85, 'bass') : engine.note(s.chordInst, low, t, 2.5, 0.7, 'chord'));
+    }
+  };
+  // wait for the samples (as selecting does) rather than drop a note that is still loading
+  const ids = mel ? [s.melodyInst] : [s.chordInst, ...(s.bassPattern !== 'off' ? [s.bassInst] : [])];
+  if (notes.length && ids.some((id) => !engine.isLoaded(id) && !engine.failed[id])) instrumentsReady().then(go); else go();
+}
+// the keys are the selected chord, untouched: then they sound exactly as selecting it does
+function keysAreOwn(keys) {
+  if (S.layer !== 'chords' || !keys.length) return false;
+  const ck = S.ck, own = csChord();
+  return !!(own && !own.nc && !own.rep && !ck.dirty && ck.text === chordText(own) && ck.notes.join() === keys.join());
 }
 function hearKey(midi) {
   const ctx = engine.ensureContext(), t = ctx.currentTime + 0.005;
@@ -777,15 +815,10 @@ function draftUp(id) {
   updateBigPiano();
 }
 function bigPianoBar(what) {
-  const menu = $('#bigpiano .bp-menu');
-  if (what === 'more') { menu.hidden = !menu.hidden; return; }
-  const inMenu = what === 'clear' || what === 'latch';
-  if (menu && what === 'clear') afterTap(() => { menu.hidden = true; });
-  else if (menu && !inMenu) menu.hidden = true;
   if (what === 'edit' || what === 'draft') {
     S.settings.pianoMode = what; persistSoon();
     for (const id of [...S.held.keys()]) draftUp(id);
-    toast(what === 'edit' ? (S.layer === 'melody' ? 'Edit: keys enter notes' : 'Edit: tap keys on/off to build a chord, then Write') : 'Draft: keys just play, nothing is written');
+    toast(what === 'edit' ? (S.layer === 'melody' ? 'Edit: keys enter notes' : 'Edit: keys change the selected chord') : 'Draft: keys just play, nothing is written');
     updateBigPiano(); updatePanel(); return;
   }
   if (what === 'write' && draftMode()) {               // draft: put the drafted chord in the selected slot
@@ -798,12 +831,15 @@ function bigPianoBar(what) {
   }
   if (what === 'name') {                              // the chord name: play the keys again (named or not)
     const nm = $('#bigpiano .bp-name'); nm.classList.add('hit'); setTimeout(() => nm.classList.remove('hit'), 160);
+    if (!(playingAt && !(paused && S.keysTouched))) {
+      const keys = draftMode() ? latchSet().notes : S.layer === 'chords' ? chordEdit().notes : [];
+      if (keysAreOwn(keys)) { hearChordAt(S.cs.m, csPos(), true); return; }   // same sound as tapping the chord in the chart
+    }
     if (draftMode() && !latchOn()) { const h = heldNotes(); if (h.length) strikeChord(h); return; }
     what = 'strike';
   }
   if (what === 'strike' && playingAt && !(paused && S.keysTouched)) {   // playing or paused: hear the chord at the playhead
-    const seg = segAt(playingAt.m, playingAt.beat);
-    if (seg && seg.chord) strikeChord(chordKeys(seg.chord, S.bigBase), true);
+    hearChordAt(playingAt.m, playingAt.beat, true);                       // exactly as it plays in the song
     return;
   }
   if (playingAt && !(paused && S.keysTouched) && (what === 'write' || what === 'clear')) return;
@@ -1077,7 +1113,7 @@ const PANELS = {
     [['♭9', 'x', '♭9', '♭9'], ['♯9', 'x', '♯9', '♯9'], ['♯11', 'x', '♯11', '♯11'], ['♭13', 'x', '♭13', '♭13'], ['♭5', 'x', '♭5', '♭5'],
       ['♯5', 'x', '♯5', '♯5'], ['sus4', 'sus', 'sus4', '4'], ['sus2', 'sus', 'sus2', '2'], ['6/9', 'q', '6/9', 'sixnine'], ['alt', 'q', 'alt', 'alt']],
     [['add9', 'add', 'add9', '9'], ['add11', 'add', 'add11', '11'], ['omit3', 'omit', 'omit3', '3'], ['⇄', 'cenh', 'Respell root'], ['N.C.', 'nc', 'No chord'], ['/', 'beat', 'Repeat the chord on this beat (a beat slash)'],
-      ['⌨', 'type', 'Type chords'], ['⌫', 'cdel', 'Clear'], ['◀', 'cprev', 'Previous beat'], ['▶', 'cnext', 'Next beat'], ['↶', 'undo', 'Undo']],
+      ['⌨', 'type', 'Type chords'], ['⌫', 'cdel', 'Clear'], ['◀', 'cprev', 'Previous beat'], ['▶', 'cnext', 'Next beat'], ['↶', 'undo', 'Undo'], ['↷', 'redo', 'Redo']],
   ],
   bars: [
     [['|:', 'rstart', 'Repeat start'], [':|', 'rend', 'Repeat end'], ['×2', 'rtimes', 'Times to play'], ['1.', 'ending', '1st ending', 1], ['2.', 'ending', '2nd ending', 2],
@@ -1106,7 +1142,7 @@ function buildPanel() {
       p.appendChild(r); return;
     }
     const r = document.createElement('div');
-    r.className = 'krow' + (row.length === 8 ? ' k8' : row.length === 11 ? ' k11' : '') + (row.some((k) => k[1] === 'pianoShift') ? ' oct-row' : '');
+    r.className = 'krow' + ([8, 11, 12].includes(row.length) ? ` k${row.length}` : '') + (row.some((k) => k[1] === 'pianoShift') ? ' oct-row' : '');
     row.forEach(([label, action, title, arg]) => {
       const b = document.createElement('button');
       b.className = 'key' + (['root', 'cacc', 'slash'].includes(action) ? ' root' : '') + (String(label).length > 5 ? ' tiny' : String(label).length > 3 ? ' small' : '');
@@ -2053,19 +2089,25 @@ function bindGlobal() {
   try { if (navigator.devicePosture) navigator.devicePosture.addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
   try { matchMedia('(vertical-viewport-segments: 2)').addEventListener('change', () => { applySplit(); render(); }); } catch (e) { /* none */ }
   const bp = $('#bigpiano');
-  document.addEventListener('pointerdown', (e) => {          // a tap anywhere else just closes the ⋯ menu
-    const menu = $('#bigpiano .bp-menu');
-    if (menu && !menu.hidden && !e.target.closest('.bp-menu, [data-bp="more"]')) {
-      menu.hidden = true;
-      e.preventDefault(); e.stopPropagation(); swallowClick();       // …without pressing what's under it
-    }
-  }, true);
   document.addEventListener('click', (e) => { if (performance.now() < swallowUntil) { e.preventDefault(); e.stopPropagation(); } }, true);
   // the keys: a tap plays (or toggles) a key; a sideways swipe slides the keyboard along, and it settles
   // on the nearest white key. Keys that sound while held start at once and stop if the touch turns into a swipe
   const touches = new Map();
+  const endHold = (e, act) => {
+    const h = tipHold; if (!h || h.id !== e.pointerId) return;
+    clearTimeout(h.timer); tipHold = null;
+    if (h.shown) hideTipSoon(); else if (act && !h.b.disabled) bigPianoBar(h.b.dataset.bp);
+  };
+  document.addEventListener('pointerup', (e) => endHold(e, true));
+  document.addEventListener('pointercancel', (e) => endHold(e, false));
   bp.addEventListener('pointerdown', (e) => {
     const b = e.target.closest('[data-bp]');
+    if (b && b.dataset.tip) {                                  // L / F: a tap toggles; holding shows what it does
+      e.preventDefault();
+      const h = { b, id: e.pointerId, shown: false };
+      h.timer = setTimeout(() => { h.shown = true; showTip(b); }, 450);
+      tipHold = h; return;
+    }
     if (b) { e.preventDefault(); if (!b.disabled) bigPianoBar(b.dataset.bp); return; }
     const k = e.target.closest('.pk'); if (!k) return;
     e.preventDefault(); engine.unlock();
@@ -2120,8 +2162,31 @@ function bindGlobal() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') away(); else engine.back(); });
   window.addEventListener('pagehide', away);
   window.addEventListener('pageshow', () => engine.back());
-  // any tap wakes the sound (and starts it afresh after the app has been away), whatever was tapped
-  document.addEventListener('pointerdown', () => engine.unlock(), true);
+  // any tap wakes the sound (and starts it afresh after the app has been away), whatever was tapped; the end of
+  // a touch counts too, since iOS lets sound start there when it won't at the touch's start
+  for (const ev of ['pointerdown', 'touchend', 'click']) document.addEventListener(ev, () => { engine.unlock(); updateSoundBtn(); }, true);
+  engine.onState = updateSoundBtn;
+  // the chart area can change width without a resize event (Split View, a status column coming or going): lay
+  // the chart out again whenever its width changes
+  try {
+    let lastW = 0, rt2 = 0;
+    new ResizeObserver(([e]) => {
+      const w = Math.round(e.contentRect.width);
+      if (Math.abs(w - lastW) < 2) return;
+      lastW = w; clearTimeout(rt2); rt2 = setTimeout(() => { applySplit(); render(); }, 80);
+    }).observe($('#score-wrap'));
+  } catch (e) { /* no ResizeObserver */ }
+  const sb = $('#btn-sound');
+  if (sb) {
+    sb.innerHTML = SOUND_SVG;
+    sb.addEventListener('click', () => {
+      engine.restart();
+      const ctx = engine.ensureContext();
+      engine.note(S.settings.chordInst, 72, ctx.currentTime + 0.02, 0.35, 0.35, 'chord');   // a soft note to show it's back
+      toast('Sound restarted'); setTimeout(updateSoundBtn, 300);
+    });
+    updateSoundBtn();
+  }
 }
 function renderAll() { applySplit(); buildPanel(); render(); updateSyncLabel(); }
 

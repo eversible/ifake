@@ -366,7 +366,6 @@ body.split #bigpiano { grid-area: piano; display: flex; }
 #bigpiano .bp-bar { display: flex; align-items: center; gap: 6px; height: 40px; flex: 0 0 auto; color: #c7c7cc; font-size: 14px; }
 #bigpiano .bp-bar button { height: 40px; min-width: 44px; border-radius: 9px; background: var(--key-alt); color: var(--key-text); font-size: 16px; padding: 0 10px; }
 #bigpiano .bp-bar .bp-oct { font-size: 22px; min-width: 44px; padding: 0; }
-#bigpiano .bp-bar .bp-more { font-size: 20px; }
 #bigpiano .bp-name { cursor: pointer; border-radius: 9px; transition: background-color 0.15s; flex: 1; min-width: 0; background: none !important; text-align: center; font: 600 20px var(--chord-font); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #bigpiano .bp-mode { display: flex; background: var(--key-alt); border-radius: 10px; padding: 2px; gap: 2px; height: 40px; box-sizing: border-box; }
 #bigpiano .bp-mode button { height: 36px; min-width: 58px; background: none; color: #c7c7cc; font-size: 15px; border-radius: 8px; }
@@ -473,19 +472,6 @@ body.split #mel-chip { height: 42px; }
 #update-bar { position: fixed; top: calc(env(safe-area-inset-top) + 8px); left: 50%; transform: translateX(-50%); z-index: 90;
   background: #0a84ff; color: #fff; border: 0; border-radius: 20px; padding: 10px 18px; font: 600 15px -apple-system, BlinkMacSystemFont, sans-serif;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); }
-
-/* the ⋯ menu above the piano bar */
-#bigpiano .bp-menu { position: absolute; right: 6px; bottom: calc(100% - 4px); z-index: 30; display: flex; flex-direction: column; gap: 2px;
-  min-width: 250px; padding: 6px; background: #2c2c2e; border-radius: 14px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); }
-#bigpiano .bp-menu[hidden] { display: none; }
-#bigpiano .bp-menu button { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 44px; padding: 0 12px;
-  border-radius: 9px; background: none; color: #f2f2f7; font-size: 16px; text-align: left; }
-#bigpiano .bp-menu button[hidden] { display: none; }
-#bigpiano .bp-menu button:active { background: #3a3a3c; }
-#bigpiano .bp-sw i { flex: 0 0 auto; width: 42px; height: 26px; border-radius: 13px; background: #48484a; position: relative; transition: background 0.15s; }
-#bigpiano .bp-sw i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: left 0.15s; }
-#bigpiano .bp-sw.on i { background: #0a84ff; }
-#bigpiano .bp-sw.on i::after { left: 19px; }
 /* the piano bar's ‹ › move the keyboard, so the panel's own −oct / +oct go in split view */
 body.split #panel .key[data-action="pianoShift"] { display: none; }
 body.split #panel .krow.oct-row { grid-template-columns: repeat(6, minmax(0, 1fr)); }
@@ -512,10 +498,10 @@ body.split #app { position: absolute; top: 0; left: 0; right: 0; bottom: auto; h
 /* the Duo's tall status-bar band: iOS keeps taps there for itself, so only the song title sits in it
    (left of the status icons); ☰ goes left of the tabs, Even and ⚙ to their right */
 body.split.head-up #app { padding-top: 0;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   grid-template-rows: env(safe-area-inset-top) calc(var(--seg0) - env(safe-area-inset-top)) var(--hinge) 52px 38px minmax(0, 1fr) var(--piano-h);
-  grid-template-areas: "head head head head" "chart chart chart chart" "hinge hinge hinge hinge" "transport transport transport transport"
-    "menu tabs even gear" "kb kb kb kb" "piano piano piano piano"; }
+  grid-template-areas: "head head head head head" "chart chart chart chart chart" "hinge hinge hinge hinge hinge" "transport transport transport transport transport"
+    "menu tabs even snd gear" "kb kb kb kb kb" "piano piano piano piano piano"; }
 body.split.head-up #topbar { display: contents; }
 body.split.head-up #title { grid-area: head; align-self: end; display: block; max-width: calc(100% - 250px); box-sizing: border-box; padding: 0 12px 10px;
   color: #f2f2f7; font: 600 17px var(--ui-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
@@ -544,6 +530,9 @@ body.split.head-up #tabs { margin: 3px 4px 0; }
 #chordgrid .cell .sim-half svg { height: 42%; max-height: 27px; }
 #chordgrid .cell .sim-two svg { height: 66%; max-height: 44px; }
 .krow.k11 { grid-template-columns: repeat(11, minmax(0, 1fr)); }
+.krow.k12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.krow.k12 .key { padding: 0; }
+.krow.k12 .key.small { font-size: 11px; letter-spacing: -0.4px; }
 #panel .key svg { fill: currentColor; }
 #panel .key[data-action="sim"] svg { height: 20px; width: auto; vertical-align: middle; }
 #panel .key[data-action="sim"][data-arg="two"] svg { height: 25px; }
@@ -557,10 +546,10 @@ body.split #panel .krow { max-height: 66px; }
 /* narrow split screen (the folded phone's cover screen): ☰, Even and ⚙ sit beside the tabs, as on the tall-band
    layout, and the control row tightens so everything fits beside the status column */
 body.split.narrow:not(.head-up) #app {
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   grid-template-rows: calc(var(--seg0) - env(safe-area-inset-top)) var(--hinge) 50px 38px minmax(0, 1fr) var(--piano-h);
-  grid-template-areas: "chart chart chart chart" "hinge hinge hinge hinge" "transport transport transport transport"
-    "menu tabs even gear" "kb kb kb kb" "piano piano piano piano"; }
+  grid-template-areas: "chart chart chart chart chart" "hinge hinge hinge hinge hinge" "transport transport transport transport transport"
+    "menu tabs even snd gear" "kb kb kb kb kb" "piano piano piano piano piano"; }
 body.split.narrow #topbar { display: contents; }
 body.split.narrow #btn-charts { grid-area: menu; margin: 3px 0 0 4px; }
 body.split.narrow #btn-even { grid-area: even; margin: 3px 0 0 0; }
@@ -580,11 +569,23 @@ body.split.narrow #bigpiano .bp-bar { gap: 4px; }
    full width under it, like the system keyboard */
 body.split #app { padding-left: 0; padding-right: 0; }
 body.split #score-wrap { margin-left: env(safe-area-inset-left); margin-right: env(safe-area-inset-right); }
-/* Follow (the draft keys start from the selected chord / note), beside Edit | Draft */
-#bigpiano .bp-bar button.bp-follow { font-size: 15px; padding: 0 9px; }
-#bigpiano .bp-bar button.bp-follow.on { background: #0a84ff; color: #fff; }
+/* L (latch) and F (follow): one-letter toggles beside Edit | Draft; hold one for a tooltip */
+#bigpiano .bp-bar button.bp-tog { min-width: 34px; width: 34px; padding: 0; font: 600 16px var(--ui-font); -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+#bigpiano .bp-bar button.bp-tog.on { background: #0a84ff; color: #fff; }
+#bigpiano .bp-tip { position: absolute; bottom: calc(100% - 2px); z-index: 31; max-width: calc(100% - 8px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 7px 10px; border-radius: 9px;
+  background: #3a3a3c; color: #fff; font: 13px/1.3 var(--ui-font); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); pointer-events: none; }
+#bigpiano .bp-tip[hidden] { display: none; }
 /* narrow screens: a tighter piano bar so the chord name keeps room */
-body.split.narrow #bigpiano .bp-bar button { min-width: 34px; padding: 0 6px; font-size: 15px; }
-body.split.narrow #bigpiano .bp-mode button { padding: 0 8px; }
-body.split.narrow #bigpiano .bp-bar button.bp-follow { padding: 0 6px; font-size: 14px; }
+body.split.narrow #bigpiano .bp-bar { gap: 4px; }
+body.split.narrow #bigpiano .bp-bar button { min-width: 30px; padding: 0 6px; font-size: 15px; }
+body.split.narrow #bigpiano .bp-bar .bp-oct { min-width: 30px; }
+body.split.narrow #bigpiano .bp-mode button { min-width: 44px; padding: 0 7px; font-size: 14px; }
+body.split.narrow #bigpiano .bp-bar button.bp-tog { min-width: 30px; width: 30px; padding: 0; }
 body.split.narrow #bigpiano .bp-bar button.bp-write { padding: 0 7px; }
+/* the sound button: a speaker; struck through and orange when the sound isn't running (tap to restart it) */
+#btn-sound svg { width: 20px; height: 20px; fill: currentColor; vertical-align: middle; }
+#btn-sound .x { display: none; }
+#btn-sound.off { color: #ff9f0a; }
+#btn-sound.off .x { display: inline; }
+#btn-sound.off .w { display: none; }
+body.split.head-up #btn-sound, body.split.narrow #btn-sound { grid-area: snd; margin: 3px 0 0 4px; height: 34px; min-height: 0; min-width: 36px; }

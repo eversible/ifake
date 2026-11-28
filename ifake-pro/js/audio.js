@@ -102,7 +102,7 @@ export class AudioEngine {
     this.ctx = new AC({ latencyHint: 'interactive' });
     const ctx = this.ctx;
     // a phone call or another app can interrupt the audio without the app being hidden: treat it like leaving
-    ctx.onstatechange = () => { if (ctx.state === 'interrupted' && this.ctx === ctx) this._awayAt = performance.now(); };
+    ctx.onstatechange = () => { if (ctx.state === 'interrupted' && this.ctx === ctx) this._awayAt = performance.now(); if (this.onState) this.onState(); };
     this.comp = ctx.createDynamicsCompressor();
     this.comp.threshold.value = -10; this.comp.ratio.value = 4;
     this.comp.connect(ctx.destination);
@@ -123,8 +123,13 @@ export class AudioEngine {
   // The app went to the background. iOS can leave an audio context stuck after that (silent, never resuming,
   // or running far behind — the sound comes late), so coming back starts a fresh one (on the way back, and
   // at the latest on the first tap); the loaded samples carry over.
-  away() { if (this.ctx) this._awayAt = performance.now(); }
-  back() { if (this.ctx && this._awayAt) { this._awayAt = 0; this._renew(); } }
+  away() { if (this.ctx) this._awayAt = performance.now(); if (this.onState) this.onState(); }
+  // back in the app: the fresh start waits for the first tap (one started outside a tap stays silent on iOS)
+  back() { if (this.onState) this.onState(); }
+  // the restart-sound button: a fresh audio context now (call from a tap)
+  restart() { if (this.ctx) this._awayAt = performance.now(); this.unlock(); }
+  // is the sound ready to play?
+  get ok() { return !!this.ctx && this.ctx.state === 'running' && !this._awayAt; }
   _renew() {
     const old = this.ctx;
     if (this.onRenew) this.onRenew();                // the app stops playback first (its timing is on the old clock)
@@ -139,7 +144,7 @@ export class AudioEngine {
     this._awayAt = 0;
     const ctx = this.ensureContext();
     try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* older Safari */ }
-    if (ctx.state !== 'running') ctx.resume().catch(() => {});
+    if (ctx.state !== 'running') ctx.resume().then(() => this.onState && this.onState()).catch(() => {});
     if (!this._unlocked) {
       const b = ctx.createBuffer(1, 1, 22050), s = ctx.createBufferSource();
       s.buffer = b; s.connect(ctx.destination); s.start(0);

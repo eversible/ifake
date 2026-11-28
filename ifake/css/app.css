@@ -277,3 +277,9 @@ label.btn.file { display: inline-flex; align-items: center; cursor: pointer; }
 .cell .beat { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; color: var(--ink); }
 .cell .beat svg { height: 40%; width: auto; fill: currentColor; }
 #keyboard .key[data-k] svg[viewBox="0 0 12 24"] { height: 22px; }
+/* the sound button: a speaker; struck through and orange when the sound isn't running (tap to restart it) */
+#btn-sound svg { width: 20px; height: 20px; fill: currentColor; vertical-align: middle; }
+#btn-sound .x { display: none; }
+#btn-sound.off { color: #ff9f0a; }
+#btn-sound.off .x { display: inline; }
+#btn-sound.off .w { display: none; }

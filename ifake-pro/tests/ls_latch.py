@@ -22,9 +22,6 @@ async def main():
             r = await J(f"(() => {{ const k = document.querySelector('#bigpiano .pk[data-midi=\"{midi}\"]'); const b = k.getBoundingClientRect(); return [b.x + b.width/2, b.y + b.height * (k.classList.contains('b') ? 0.5 : 0.85)]; }})()")
             await page.touchscreen.tap(*r); await page.wait_for_timeout(60)
         async def tapb(w):
-            if w in ('clear', 'follow', 'latch'):          # these live in the piano bar's ⋯ menu
-                m = await J("(() => { const b = document.querySelector('#bigpiano [data-bp=\"more\"]').getBoundingClientRect(); return [b.x + b.width/2, b.y + b.height/2]; })()")
-                await page.touchscreen.tap(*m); await page.wait_for_timeout(80)
             r = await J(f"(() => {{ const b = document.querySelector('#bigpiano [data-bp=\"{w}\"]').getBoundingClientRect(); return [b.x + b.width/2, b.y + b.height/2]; }})()")
             await page.touchscreen.tap(*r); await page.wait_for_timeout(80)
         for m in [50, 53, 57]: await tapk(m)
@@ -35,8 +32,8 @@ async def main():
         await tapk(53)
         print("F off:", await name(), "| played (remaining):", await J("JSON.stringify(__strikes.at(-1))"))
         await tapk(53)
-        await tapb('strike')
-        print("▶ replays:", await J("JSON.stringify(__strikes.at(-1))"), "| write ready:", await J("document.querySelector('#bigpiano [data-bp=\"write\"]').classList.contains('ready')"))
+        await tapb('name')
+        print("name replays:", await J("JSON.stringify(__strikes.at(-1))"), "| write ready:", await J("document.querySelector('#bigpiano [data-bp=\"write\"]').classList.contains('ready')"))
         r = await cdp.send("Page.captureScreenshot", {"format": "png"}); open("/home/claude/shots/111_latch.png", "wb").write(base64.b64decode(r["data"]))
         await tapb('write')
         print("Write → slot:", await J(slot), "| write now:", await J("document.querySelector('#bigpiano [data-bp=\"write\"]').disabled"))

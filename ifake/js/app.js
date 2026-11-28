@@ -11,6 +11,11 @@ import { unrollBars, barsToCells, shiftMarks } from './form.js';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const uid = () => Math.random().toString(36).slice(2, 10);
+const SOUND_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="w" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="x" d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+// the sound button: a speaker; struck through (orange) when the sound isn't running. Tapping it starts the
+// sound afresh (for when iOS has left it silent or late after the app was away)
+function updateSoundBtn() { const b = document.getElementById('btn-sound'); if (b) b.classList.toggle('off', !engine.ok); }
+
 
 // ---------------------------------------------------------------- defaults
 const DEFAULT_SETTINGS = {
@@ -1482,8 +1487,21 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') away(); else engine.back(); });
   window.addEventListener('pagehide', away);
   window.addEventListener('pageshow', () => engine.back());
-  // any tap wakes the sound (and starts it afresh after the app has been away), whatever was tapped
-  document.addEventListener('pointerdown', () => engine.unlock(), true);
+  // any tap wakes the sound (and starts it afresh after the app has been away), whatever was tapped; the end of
+  // a touch counts too, since iOS lets sound start there when it won't at the touch's start
+  for (const ev of ['pointerdown', 'touchend', 'click']) document.addEventListener(ev, () => { engine.unlock(); updateSoundBtn(); }, true);
+  engine.onState = updateSoundBtn;
+  const sb = $('#btn-sound');
+  if (sb) {
+    sb.innerHTML = SOUND_SVG;
+    sb.addEventListener('click', () => {
+      engine.restart();
+      const ctx = engine.ensureContext();
+      engine.note(S.settings.chordInst, 72, ctx.currentTime + 0.02, 0.35, 0.35, 'chord');   // a soft note to show it's back
+      toast('Sound restarted'); setTimeout(updateSoundBtn, 300);
+    });
+    updateSoundBtn();
+  }
   // audio: create the context early so samples decode before the first tap
   try { engine.ensureContext(); } catch (e) { /* no Web Audio */ }
   applyAudioSettings();
