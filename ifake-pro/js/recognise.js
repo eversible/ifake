@@ -187,8 +187,9 @@ const accText = (a) => (a > 0 ? '♯'.repeat(a) : '♭'.repeat(-a));
 //   B♭ D; C13: C E B♭ D A; C6/9: C E A D). Altered 5ths (♭5, ♯5) always stay; so do triads, add chords and plain
 //   7ths, where the 5th is part of the sound; and the 5th stays when it's the slash bass (C9/G)
 // - tensions sit at F3 or higher, so they don't muddy the low register
-// The lowest note is the first at or above base
-export function chordKeys(c, base) {
+// The lowest note is the first at or above base. pianist = false gives the strict voicing: every chord tone, in
+// order, with no 5th dropped and no floor for tensions
+export function chordKeys(c, base, pianist = true) {
   if (!c || c.nc || !c.root) return [];
   const rootPC = notePC(c.root), bassPC = c.bass ? notePC(c.bass) : rootPC;
   const ivls = chordIntervals(c), pcOf = (i) => mod12(rootPC + ivlSemis(i));
@@ -197,7 +198,7 @@ export function chordKeys(c, base) {
   // the plain 5th goes only where nothing leans on it: a ♯11 or ♭13 without it would read as a ♭5 or ♯5
   // (C-7(♯11) would look like Cø7), and an 11 over a major 3rd needs it to stay an 11 chord
   const needs5 = has(11, 1) || has(13, -1) || (has(11, 0) && has(3, 0));
-  const drop = (i) => i.deg === 5 && i.acc === 0 && tensions && (has(7) || (has(6) && has(9, 0))) && !needs5;
+  const drop = (i) => pianist && i.deg === 5 && i.acc === 0 && tensions && (has(7) || (has(6) && has(9, 0))) && !needs5;
   const core = ivls.filter((i) => i.deg < 8), tens = ivls.filter((i) => i.deg >= 8);
   const k = core.findIndex((i) => pcOf(i) === bassPC);
   const order = k >= 0 ? [...core.slice(k), ...core.slice(0, k), ...tens] : ivls;
@@ -213,7 +214,7 @@ export function chordKeys(c, base) {
     const bass = pcOf(i) === bassPC;
     if (out.length && bass) continue;                          // the bass isn't doubled above
     if (drop(i) && !bass) continue;                            // the plain 5th of an extended chord
-    place(pcOf(i), i.deg >= 8 ? 53 : -Infinity);               // tensions at F3 or above
+    place(pcOf(i), pianist && i.deg >= 8 ? 53 : -Infinity);    // tensions at F3 or above
   }
   return out;
 }
