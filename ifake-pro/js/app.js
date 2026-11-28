@@ -592,7 +592,7 @@ function chordEdit() {
   // selecting another chord starts again from it (changes not yet written are dropped, with a note); in
   // Draft, selecting an empty slot keeps the keys as they are, ready to Write there
   if (slot !== ck.slot && ck.slot) {
-    if (own) { if (ck.dirty) { ck.dirty = false; queueMicrotask(() => toast('Draft keys now start from the selected chord (the unwritten ones were dropped)')); } }
+    if (own) ck.dirty = false;                       // the selected chord loads (quietly: no toast)
     else if (draftMode()) { ck.slot = slot; ck.text = text; return ck; }
   }
   if (!ck.dirty && (slot !== ck.slot || text !== ck.text)) ck.notes = own ? chordKeys(own, S.bigBase) : [];
