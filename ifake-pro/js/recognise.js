@@ -177,24 +177,43 @@ const accText = (a) => (a > 0 ? '♯'.repeat(a) : '♭'.repeat(-a));
 
 // the keys that show a chord: its lowest note (the root, or the bass of a slash chord) in the piano's lowest
 // octave, the other notes close above it
-// the chord on the keys, stacked upward in its own order, each note the first one above the last: 1 3 5 7, then
-// 9 11 13 above the 7th (so a ♭9 sits above the 7th, not a semitone over the root). The lowest note is the first
-// at or above base. A slash bass that's a chord tone starts the order there and goes on round (C/E: E G C;
-// C7/G: G B♭ C E); any other slash bass goes underneath the chord in root position (D/C: C D F♯ A)
+// the chord on the keys, voiced the way pianists usually play it (the bass note sounds an octave below, as the
+// left hand would):
+// - stacked upward in the chord's own order, each note the first one above the last: 1 3 5 7, then 9 11 13 above
+//   the 7th (so a ♭9 sits above the 7th, not a semitone over the root)
+// - a slash bass that's a chord tone starts the order there and goes on round (C/E: E G C; C7/G: G B♭ C E); any
+//   other slash bass goes underneath the chord in root position (D/C: C D F♯ A). The bass is never doubled above
+// - a 7th or 6th chord with tensions (9, 11, 13) leaves out its plain 5th, the note pianists drop first (C9: C E
+//   B♭ D; C13: C E B♭ D A; C6/9: C E A D). Altered 5ths (♭5, ♯5) always stay; so do triads, add chords and plain
+//   7ths, where the 5th is part of the sound; and the 5th stays when it's the slash bass (C9/G)
+// - tensions sit at F3 or higher, so they don't muddy the low register
+// The lowest note is the first at or above base
 export function chordKeys(c, base) {
   if (!c || c.nc || !c.root) return [];
   const rootPC = notePC(c.root), bassPC = c.bass ? notePC(c.bass) : rootPC;
   const ivls = chordIntervals(c), pcOf = (i) => mod12(rootPC + ivlSemis(i));
+  const has = (deg, acc) => ivls.some((i) => i.deg === deg && (acc === undefined || i.acc === acc));
+  const tensions = ivls.some((i) => i.deg >= 9);
+  // the plain 5th goes only where nothing leans on it: a ♯11 or ♭13 without it would read as a ♭5 or ♯5
+  // (C-7(♯11) would look like Cø7), and an 11 over a major 3rd needs it to stay an 11 chord
+  const needs5 = has(11, 1) || has(13, -1) || (has(11, 0) && has(3, 0));
+  const drop = (i) => i.deg === 5 && i.acc === 0 && tensions && (has(7) || (has(6) && has(9, 0))) && !needs5;
   const core = ivls.filter((i) => i.deg < 8), tens = ivls.filter((i) => i.deg >= 8);
   const k = core.findIndex((i) => pcOf(i) === bassPC);
   const order = k >= 0 ? [...core.slice(k), ...core.slice(0, k), ...tens] : ivls;
   const out = [];
   let prev = -Infinity;
-  const place = (pc) => { let m = prev === -Infinity ? base + mod12(pc - base) : prev + 1 + mod12(pc - prev - 1); out.push(m); prev = m; };
+  const place = (pc, floor = -Infinity) => {
+    let m = prev === -Infinity ? base + mod12(pc - base) : prev + 1 + mod12(pc - prev - 1);
+    while (m < floor) m += 12;
+    out.push(m); prev = m;
+  };
   if (k < 0 && bassPC !== rootPC) place(bassPC);              // a bass from outside the chord goes underneath
   for (const i of order) {
-    if (out.length && pcOf(i) === bassPC) continue;           // the bass isn't doubled above
-    place(pcOf(i));
+    const bass = pcOf(i) === bassPC;
+    if (out.length && bass) continue;                          // the bass isn't doubled above
+    if (drop(i) && !bass) continue;                            // the plain 5th of an extended chord
+    place(pcOf(i), i.deg >= 8 ? 53 : -Infinity);               // tensions at F3 or above
   }
   return out;
 }
