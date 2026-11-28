@@ -112,3 +112,4 @@ while Mez was away. Each of those rows lists the alternatives so it can be revis
 | No hint lines | The bar shows only the chord (or note) name: no "Tap keys to build a chord", "No chord name yet" or Draft hints |
 | Redo in the Chords keys | ↷ Redo sits beside ↶ Undo on the Chords tab's last key row (the other tabs had it already) |
 | No "keys dropped" toast | Selecting a chord over unwritten Draft keys loads the chord quietly (the "unwritten ones were dropped" popup went) |
+| Follow without latch | F now shows in Draft with latch off too: it marks the selected chord (or note) on the keys in pale blue, root dotted, without holding them, and the bar names it until you play keys. Tapping the name plays it |

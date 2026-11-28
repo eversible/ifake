@@ -643,6 +643,8 @@ function updateBigPiano() {
   const mine = !!playingAt && !!S.keysTouched, takeover = mine && !!paused;
   const playback = !!playingAt && !takeover;
   const on = new Set(playback && !mine ? [] : draft ? (latchOn() ? latchSet().notes : heldNotes()) : bigPianoNotes());
+  // Draft without latch, with Follow on: the selected chord (or note) is marked on the keys, which stay free to play
+  const hint = new Set(draft && !latchOn() && followSel() && !playback ? followKeys() : []);
   const playSeg = playback ? segAt(playingAt.m, playingAt.beat) : null;
   const play = new Set(playSeg && playSeg.chord ? chordKeys(playSeg.chord, S.bigBase) : []);
   const mel = takeover ? new Set() : melNow;
@@ -650,6 +652,7 @@ function updateBigPiano() {
   el.querySelectorAll('.pk').forEach((k) => {
     const m = +k.dataset.midi;
     k.classList.toggle('on', on.has(m)); k.classList.toggle('play', play.has(m)); k.classList.toggle('mel', mel.has(m));
+    k.classList.toggle('hint', hint.has(m));
   });
   // something sounding beyond the keys: light the octave arrow on that side (orange melody, green chord)
   if (!pianoDrag) positionStrip();
@@ -658,23 +661,25 @@ function updateBigPiano() {
     const b = el.querySelector(sel);
     const m = [...mel].some(off), pl = !m && [...play].some(off);
     b.classList.toggle('off-mel', m); b.classList.toggle('off-play', pl);
-    b.classList.toggle('off-on', !m && !pl && [...on].some(off));
+    b.classList.toggle('off-on', !m && !pl && ([...on].some(off) || (!on.size && [...hint].some(off))));
   }
   const name = el.querySelector('.bp-name');
   const latchBtn = el.querySelector('[data-bp="latch"]');
   latchBtn.hidden = !draft; latchBtn.classList.toggle('on', latchOn());
   latchBtn.title = latchBtn.ariaLabel = latchBtn.dataset.tip;
   const followBtn = el.querySelector('[data-bp="follow"]');
-  followBtn.hidden = !(draft && latchOn() && (S.layer === 'chords' || S.layer === 'melody'));
+  followBtn.hidden = !(draft && (S.layer === 'chords' || S.layer === 'melody'));
   followBtn.classList.toggle('on', followSel());
-  followBtn.title = followBtn.ariaLabel = followBtn.dataset.tip = `Follow: the keys start from the selected ${S.layer === 'chords' ? 'chord' : 'note'}`;
+  const what = S.layer === 'chords' ? 'chord' : 'note';
+  followBtn.title = followBtn.ariaLabel = followBtn.dataset.tip = latchOn() ? `Follow: the keys start from the selected ${what}` : `Follow: mark the selected ${what} on the keys`;
   const clearBtn = el.querySelector('[data-bp="clear"]'); clearBtn.title = clearBtn.ariaLabel = clearBtn.dataset.tip;
   if (draft) {
     // draft: just playing — keys latch (tap on/off) or sound while held, and the chord is named. Nothing
     // goes into the song unless you tap Write (Chords tab): then it goes into the selected slot
-    const latch = latchOn(), down = latch ? latchSet().notes : heldNotes();
+    const latch = latchOn(), held = latch ? latchSet().notes : heldNotes();
+    const down = held.length || !hint.size ? held : [...hint];   // nothing held: name the marked chord
     const built = S.draftSet && S.draftSet.key === down.join() ? S.draftSet.chord : null;
-    const c = built || (latch && ownName(down)) || (down.length > 1 ? nameChord(down, S.song.key.fifths) : null), own = csChord();
+    const c = built || ((latch || !held.length) && ownName(down)) || (down.length > 1 ? nameChord(down, S.song.key.fifths) : null), own = csChord();
     S.draftChord = c;
     const txt = c ? chordText(c) : '';
     if (txt !== S.draftText) { S.draftText = txt; if (S.layer === 'chords') queueMicrotask(updatePanel); }
@@ -685,7 +690,7 @@ function updateBigPiano() {
     write.disabled = !c || same;
     write.classList.toggle('ready', !!c && !same);
     el.querySelector('[data-bp="clear"]').hidden = !latch;
-    markRoot(el, on, playback || S.layer !== 'chords' ? null : c);
+    markRoot(el, on.size ? on : hint, playback || S.layer !== 'chords' ? null : c);
     if (playback) showPlaying(el, playSeg);
     return;
   }
@@ -703,6 +708,14 @@ function updateBigPiano() {
     markRoot(el, on, playback ? null : c);
   } else { name.className = 'bp-name none'; name.textContent = ''; markRoot(el, on, null); }
   if (playback) showPlaying(el, playSeg);
+}
+// the keys Follow marks when latch is off: the selected chord as it loads onto the keys (or the selected note)
+function followKeys() {
+  if (S.layer === 'melody') return noteEdit().notes;
+  if (S.layer !== 'chords') return [];
+  const ck = chordEdit(), own = csChord();
+  if (!own || own.nc || own.rep) return [];
+  return ck.dirty ? chordKeys(own, S.bigBase) : ck.notes;
 }
 // keys straight from the selected chord (not changed since) are named as that chord, not re-read from scratch:
 // the same notes can have several names (G-7(♯5) and E♭(add9)/G), and the chart's own one should show
@@ -849,7 +862,7 @@ function bigPianoBar(what) {
     S.settings[k] = on; persistSoon();
     if (on) { const ls = latchSet(); ls.dirty = false; ls.key = ''; ls.slot = ''; }   // pick up the selection now
     const what2 = S.layer === 'chords' ? 'chord' : 'note';
-    toast(on ? `Draft starts from the selected ${what2}` : 'Draft keys are a free sketch');
+    toast(!latchOn() ? (on ? `Follow: the selected ${what2} is marked on the keys` : 'Follow off') : on ? `Draft starts from the selected ${what2}` : 'Draft keys are a free sketch');
     updateBigPiano(); return;
   }
   if (what === 'latch') {
